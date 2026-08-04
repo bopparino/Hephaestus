@@ -1,0 +1,27 @@
+{
+  "name": "hephaestus",
+  "version": "0.0.1",
+  "description": "A local-first AI workspace with a real memory.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "bin": { "heph": "./dist/cli/index.js" },
+  "scripts": {
+    "build": "tsc",
+    "daemon": "tsx src/daemon/index.ts",
+    "cli": "tsx src/cli/index.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "smol-toml": "^1.3.1",
+    "ws": "^8.18.0",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
