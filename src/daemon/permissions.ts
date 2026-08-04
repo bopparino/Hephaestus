@@ -36,7 +36,7 @@ export interface AskRequest {
   summary: string;
 }
 
-type Asker = (req: AskRequest) => void;
+export type Asker = (req: AskRequest) => void;
 
 interface PendingAsk {
   resolve: (d: 'allow-once' | 'allow-session' | 'allow-always' | 'deny') => void;

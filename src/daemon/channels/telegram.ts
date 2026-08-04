@@ -46,6 +46,7 @@ export function startTelegram(cfg: Config, daemon: Hephd): Bot | null {
       if (db.prepare('SELECT id FROM sessions WHERE id = ?').get(id)) return id;
     }
     const id = createSession('chat');
+    db.prepare("UPDATE sessions SET title = 'Telegram' WHERE id = ?").run(id);
     db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .run(SESSION_KEY, String(id));
     return id;
@@ -59,6 +60,7 @@ export function startTelegram(cfg: Config, daemon: Hephd): Bot | null {
   bot.command('new', async ctx => {
     if (!ownerOnly(ctx.from?.id)) return;
     const id = createSession('chat');
+    db.prepare("UPDATE sessions SET title = 'Telegram' WHERE id = ?").run(id);
     db.prepare('UPDATE meta SET value = ? WHERE key = ?').run(String(id), SESSION_KEY);
     await ctx.reply('fresh session — the previous one stays in the archive (heph search finds it)');
   });

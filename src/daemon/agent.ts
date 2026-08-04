@@ -92,43 +92,7 @@ export async function runAgent(
   // granted them to the work, not to a row id. Every sub-call still faces
   // the broker individually; asks forward to the same client.
   if (!isSub) {
-    toolbox.delegate = {
-      risk: 'read', // spawning is safe — each sub-call is gated on its own
-      spec: {
-        name: 'delegate',
-        description: 'Hand a self-contained subtask to a second automaton in its own session. Only its final summary returns to you — use it for large scans or noisy work that would drown your context. background:true returns immediately and the result lands in this conversation later. Subs cannot delegate.',
-        parameters: {
-          type: 'object',
-          properties: {
-            task: { type: 'string', description: 'complete, self-contained instructions — the sub sees nothing else' },
-            background: { type: 'boolean', description: 'run detached; result arrives as a later message in this session' },
-          },
-          required: ['task'],
-        },
-      },
-      async handler(args) {
-        const project = (getDb().prepare('SELECT project FROM sessions WHERE id = ?')
-          .get(sessionId) as { project: string | null } | undefined)?.project ?? null;
-        const subSession = createSession('dev', project);
-        receipt('delegate', { subSession, background: args.background === true }, sessionId);
-        const run = runAgent(cfg, providers, broker,
-          { sessionId: subSession, root, task: String(args.task), grantSessionId, isSub: true },
-          { onDelta: () => {}, onTool: events.onTool, ask: events.ask, notify: events.notify });
-        if (args.background === true) {
-          void run.then(res => {
-            saveMessage(sessionId, 'tool' as never, `[delegate ${subSession} done] ${res.text.slice(0, 2000)}`);
-            receipt('delegate_done', { subSession, iterations: res.iterations, toolCalls: res.toolCalls }, sessionId);
-            events.notify?.('delegate.done', { sessionId, subSession });
-          }).catch(err => {
-            saveMessage(sessionId, 'tool' as never, `[delegate ${subSession} failed] ${String(err).slice(0, 300)}`);
-            events.notify?.('delegate.done', { sessionId, subSession, failed: true });
-          });
-          return `[delegated to session ${subSession} — running in background; the result will land in this conversation]`;
-        }
-        const res = await run;
-        return `[delegate session ${subSession} — ${res.iterations} iterations, ${res.toolCalls} tool calls]\n${res.text}`;
-      },
-    };
+    toolbox.delegate = makeDelegateTool(cfg, providers, broker, sessionId, root, grantSessionId, events);
   }
   const specs = Object.values(toolbox).map(t => t.spec);
 
@@ -215,4 +179,54 @@ export function listReceipts(limit = 30): unknown[] {
   return getDb()
     .prepare('SELECT id, created_at, session_id, kind, detail FROM receipts ORDER BY id DESC LIMIT ?')
     .all(limit);
+}
+
+/** The delegate tool, extracted so the unified chat automaton carries it
+ *  too — one level deep from wherever it's mounted. */
+export function makeDelegateTool(
+  cfg: Config,
+  providers: Providers,
+  broker: PermissionBroker,
+  sessionId: number,
+  root: string,
+  grantSessionId: number,
+  events: AgentEvents,
+): BuiltinTool {
+  return {
+    risk: 'read', // spawning is safe — each sub-call is gated on its own
+    spec: {
+      name: 'delegate',
+      description: 'Hand a self-contained subtask to a second automaton in its own session. Only its final summary returns to you — use it for large scans or noisy work that would drown your context. background:true returns immediately and the result lands in this conversation later. Subs cannot delegate.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task: { type: 'string', description: 'complete, self-contained instructions — the sub sees nothing else' },
+          background: { type: 'boolean', description: 'run detached; result arrives as a later message in this session' },
+        },
+        required: ['task'],
+      },
+    },
+    async handler(args) {
+      const project = (getDb().prepare('SELECT project FROM sessions WHERE id = ?')
+        .get(sessionId) as { project: string | null } | undefined)?.project ?? null;
+      const subSession = createSession('dev', project);
+      receipt('delegate', { subSession, background: args.background === true }, sessionId);
+      const run = runAgent(cfg, providers, broker,
+        { sessionId: subSession, root, task: String(args.task), grantSessionId, isSub: true },
+        { onDelta: () => {}, onTool: events.onTool, ask: events.ask, notify: events.notify });
+      if (args.background === true) {
+        void run.then(res => {
+          saveMessage(sessionId, 'tool' as never, `[delegate ${subSession} done] ${res.text.slice(0, 2000)}`);
+          receipt('delegate_done', { subSession, iterations: res.iterations, toolCalls: res.toolCalls }, sessionId);
+          events.notify?.('delegate.done', { sessionId, subSession });
+        }).catch(err => {
+          saveMessage(sessionId, 'tool' as never, `[delegate ${subSession} failed] ${String(err).slice(0, 300)}`);
+          events.notify?.('delegate.done', { sessionId, subSession, failed: true });
+        });
+        return `[delegated to session ${subSession} — running in background; the result will land in this conversation]`;
+      }
+      const res = await run;
+      return `[delegate session ${subSession} — ${res.iterations} iterations, ${res.toolCalls} tool calls]\n${res.text}`;
+    },
+  };
 }

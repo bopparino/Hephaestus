@@ -69,7 +69,7 @@ const state = {
   spaceName: null,
   scopeProject: null,       // composer @project chip
   refs: [], attachments: [], fileTexts: [],
-  mode: 'chat',
+  plan: false,
   // Streams route by session — leaving a chat never kills its run. The
   // daemon was always fine; the glass had one global wire. Not anymore.
   inflight: new Set(),      // sessionIds with a run in progress
@@ -186,6 +186,14 @@ function onEvent(event, p) {
     $('overlay').dataset.approvalId = p.approvalId;
   } else if (event === 'skin.changed') {
     applySkin(p.skin);
+  } else if (event === 'session.updated') {
+    // another surface (Telegram, a job, another window) moved a session —
+    // refresh what we're looking at, or just the rail
+    if (state.view === 'chat' && state.sessionId === p.sessionId && !state.inflight.has(p.sessionId) && !state.awaitingSession) {
+      openSession(p.sessionId);
+    } else {
+      refreshSessions();
+    }
   } else if (event === 'delegate.done') {
     // a background sub-run finished — its result is a new message in the
     // parent session; refresh if we're looking at it
@@ -250,8 +258,9 @@ async function loadSkins() {
   state.skins = await rpc('skins.list');
   const select = $('skin-select');
   select.innerHTML = state.skins.map(s => `<option value="${esc(s.name)}">${esc(s.label)} · ${s.polarity}</option>`).join('');
-  const saved = localStorage.getItem('heph-skin') ?? 'marble';
-  select.value = state.skins.some(s => s.name === saved) ? saved : 'marble';
+  // grimdark-first: the Forge is the default face; marble is the light option
+  const saved = localStorage.getItem('heph-skin') ?? 'forge';
+  select.value = state.skins.some(s => s.name === saved) ? saved : 'forge';
   applySkin(await rpc('skins.get', { name: select.value }));
   select.onchange = async () => {
     localStorage.setItem('heph-skin', select.value);
@@ -494,7 +503,7 @@ function setCrumb(crumb, title) {
 
 function renderMeter() {
   $('meta-usage').textContent = `${state.meter.calls} calls · ${state.meter.tokens >= 1000 ? (state.meter.tokens / 1000).toFixed(1) + 'k' : state.meter.tokens} tok`;
-  $('meta-mode').textContent = state.mode;
+  $('meta-mode').textContent = state.plan ? 'plan' : 'chat';
 }
 
 // ---- views ----------------------------------------------------------------
@@ -747,10 +756,9 @@ function finalizeLive() {
   liveBody = null; liveTools = null;
 }
 
-function setMode(mode) {
-  state.mode = mode;
-  document.querySelectorAll('.mode__seg').forEach(b =>
-    b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+function setPlan(on) {
+  state.plan = on;
+  $('plan-toggle').setAttribute('aria-pressed', String(on));
   renderMeter();
 }
 
@@ -781,31 +789,18 @@ async function send() {
 
   let resultSession = target;
   try {
-    if (state.mode === 'dev') {
-      // Scoped to a project when one is chosen; otherwise the daemon's
-      // workbench catches the work — dev is never blocked on setup.
-      const project = state.projects.find(pr => pr.name === state.scopeProject);
-      const result = await rpc('agent.run', {
-        task: text,
-        ...(project ? { project: project.name } : {}),
-        ...(target ? { sessionId: target } : {}),
-      });
-      resultSession = result.sessionId;
-      if (state.sessionId === null) state.sessionId = result.sessionId;
-      // no chat.done on the dev lane — finalize here if we're still looking
-      if (state.sessionId === result.sessionId) finalizeLive();
-    } else {
-      const result = await rpc('chat.send', {
-        text,
-        ...(target ? { sessionId: target } : {}),
-        ...(state.scopeProject && !target ? { project: state.scopeProject } : {}),
-        ...(refs.length ? { refSessions: refs } : {}),
-        ...(attachments.length ? { attachments } : {}),
-      });
-      resultSession = result.sessionId;
-      if (state.sessionId === null) state.sessionId = result.sessionId;
-      // chat.done already finalized the view if we were watching
-    }
+    // ONE lane now — chat carries every hand; plan sheathes the changers.
+    const result = await rpc('chat.send', {
+      text,
+      ...(state.plan ? { plan: true } : {}),
+      ...(target ? { sessionId: target } : {}),
+      ...(state.scopeProject && !target ? { project: state.scopeProject } : {}),
+      ...(refs.length ? { refSessions: refs } : {}),
+      ...(attachments.length ? { attachments } : {}),
+    });
+    resultSession = result.sessionId;
+    if (state.sessionId === null) state.sessionId = result.sessionId;
+    // chat.done already finalized the view if we were watching
   } catch (err) {
     if (state.sessionId === resultSession && liveBody) {
       liveBody.querySelector('.dots')?.remove();
@@ -1284,8 +1279,7 @@ $('at-btn').onclick = () => {
   input.setRangeText('@', input.selectionStart, input.selectionEnd, 'end');
   updateAtPopup();
 };
-document.querySelectorAll('.mode__seg').forEach(seg =>
-  seg.addEventListener('click', () => setMode(seg.dataset.mode)));
+$('plan-toggle').onclick = () => setPlan(!state.plan);
 
 $('send').onclick = send;
 $('input').addEventListener('input', () => {
@@ -1315,7 +1309,7 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Escape') { $('model-popup').classList.add('hidden'); $('switcher-menu').classList.add('hidden'); closeOverlay(); }
 });
 
-setMode('chat');
+setPlan(false);
 newChat();
 renderInspector();
 connect();

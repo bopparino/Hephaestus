@@ -14,7 +14,10 @@ import { bumpCaptureCounter, isTrivial, runCapture } from './capture.js';
 import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
 import { searchMessages, sessionBookends } from './search.js';
-import { initMcp, stopMcp, mcpStatus } from './mcp.js';
+import { initMcp, stopMcp, mcpStatus, mcpToolbox } from './mcp.js';
+import { makeDelegateTool } from './agent.js';
+import { maybeCompact } from './compact.js';
+import type { Asker } from './permissions.js';
 import { webAvailable, WEB_TOOLS } from './web.js';
 import { TOOLS, type BuiltinTool, type ToolContext } from './tools.js';
 import type { ToolCall } from '../providers/types.js';
@@ -40,15 +43,20 @@ const IDENTITY =
  *  not the model. */
 function capabilities(): string {
   const web = webAvailable();
+  const mcp = mcpStatus();
   return `
 
 [CAPABILITIES — what you can actually do, right now]
-- Converse with persistent memory: recall is automatic; a background pass captures durable facts. Use the memory_save tool to pin something important deliberately.
+- Persistent memory: recall is automatic; a background pass captures durable facts; memory_save pins one deliberately.
+- Files and shell in your workspace root (see WORKSPACE below): fs_read, fs_write, fs_list, fs_grep, shell — every write and command passes the user's permission broker.
 ${web
-    ? '- web_search and web_fetch: live web access via ollama.com. Use them for anything current — prices, news, docs, releases. Cite what you fetch.'
-    : '- Web tools exist but are DARK: no OLLAMA_API_KEY in ~/.hephaestus/secrets. If asked about web access, say exactly that and point at Connectors.'}
-- You are the chat automaton. A separate dev automaton (the "dev" mode) has file, shell, delegation${''
-    }, and MCP hands inside registered project roots — recommend it for real code work on disk.
+    ? '- web_search and web_fetch: live web via ollama.com. Use them for anything current; cite what you fetch.'
+    : '- Web tools exist but are DARK: no OLLAMA_API_KEY in ~/.hephaestus/secrets. If asked about web access, say exactly that and point at Settings → Connectors.'}
+${mcp.length ? `- MCP tools from connected servers: ${mcp.map(s => s.server).join(', ')}.` : ''}
+- Skills: skills_list/skill_view hold saved procedures — check before multi-step work; skill_save when you learn a reusable HOW.
+- delegate: hand a noisy subtask to a second automaton in its own session; only its summary returns.
+- Plan mode (when the user toggles it) sheathes writing tools — you read and produce a plan instead.
+Work products — code, files, reports — are always neutral professional register regardless of any voice.
 Claim nothing beyond this list; deny nothing on it.`;
 }
 
@@ -106,6 +114,16 @@ export class Hephd {
       }
       const path = (req.url ?? '/').split('?')[0].split('#')[0];
       const file = path === '/' ? 'index.html' : path.slice(1);
+      // Licensed fonts live in ~/.hephaestus/fonts — served, never
+      // committed. The repo carries only open-licensed files.
+      if (/^userfonts\/[\w.-]+\.(otf|woff2?|ttf)$/.test(file)) {
+        const full = join(paths.fonts, file.slice('userfonts/'.length));
+        if (existsSync(full)) {
+          res.writeHead(200, { 'Content-Type': 'font/otf', 'Cache-Control': 'no-store' });
+          res.end(readFileSync(full));
+          return;
+        }
+      }
       // No traversal — flat files plus the vendored fonts/ directory.
       if (/^(fonts\/)?[\w.-]+$/.test(file) && MIME[extname(file)]) {
         const full = join(shellDir, file);
@@ -382,6 +400,7 @@ export class Hephd {
         const sessionId = typeof p.sessionId === 'number'
           ? p.sessionId
           : createSession('chat', this.resolveProject(p.project));
+        const plan = p.plan === true;
         const refSessions = Array.isArray(p.refSessions)
           ? p.refSessions.filter((x): x is number => typeof x === 'number').slice(0, 2)
           : [];
@@ -394,7 +413,7 @@ export class Hephd {
               .map(a => ({ mime: String(a.mime), data: String(a.data), name: String(a.name ?? 'image') }))
           : [];
         return this.enqueue(sessionId, () =>
-          this.exchange(ws, req.id, sessionId, p.text as string, refSessions, images));
+          this.exchange(ws, req.id, sessionId, p.text as string, refSessions, images, plan));
       }
 
       case 'project.add': {
@@ -634,6 +653,7 @@ export class Hephd {
   private exchange(
     ws: WebSocket, reqId: number, sessionId: number, text: string,
     refSessions: number[] = [], images: { mime: string; data: string; name: string }[] = [],
+    plan = false,
   ) {
     // Every event carries its sessionId — the shell routes streams to the
     // right transcript no matter what the user is looking at.
@@ -641,8 +661,10 @@ export class Hephd {
       onDelta: t => this.send(ws, { event: 'chat.delta', params: { reqId, sessionId, text: t } }),
       onDone: usage => this.send(ws, { event: 'chat.done', params: { reqId, sessionId, usage } }),
       // same event the dev lane uses — the shell's tool table just works
-      onTool: (name, summary, ms, ok, result) =>
-        this.send(ws, { event: 'agent.tool', params: { reqId, sessionId, name, summary, ms, ok, result } }),
+      onTool: (name, summary, ms, ok, result, detail) =>
+        this.send(ws, { event: 'agent.tool', params: { reqId, sessionId, name, summary, ms, ok, result, detail } }),
+      ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId, ...askReq, sessionId } }),
+      plan,
       refSessions,
       images,
     });
@@ -658,8 +680,12 @@ export class Hephd {
     sink: {
       onDelta?: (text: string) => void;
       onDone?: (usage: Usage) => void;
-      onTool?: (name: string, summary: string, ms: number, ok: boolean, result?: string) => void;
+      onTool?: (name: string, summary: string, ms: number, ok: boolean, result?: string, detail?: string) => void;
       deliver?: (full: string) => Promise<boolean>;
+      /** approval channel — absent means headless (grants-only beyond reads) */
+      ask?: Asker | null;
+      /** plan mode: thinking hands only — nothing that changes the world */
+      plan?: boolean;
       /** @-referenced sessions: their bookends ride the user band, fenced. */
       refSessions?: number[];
       /** attached images — model sees them this turn; DB keeps a text note */
@@ -703,32 +729,61 @@ export class Hephd {
       history[history.length - 1] = { ...last, images: sink.images.map(i => ({ mime: i.mime, data: i.data })) };
     }
 
+    // ONE automaton (the v1-beta unification): base chat carries every
+    // hand — files, shell, web, MCP, skills, delegation — gated by the
+    // broker exactly as the dev lane always was. Plan mode keeps the
+    // thinking hands and sheathes the changing ones.
+    const projectName = (getDb().prepare('SELECT project FROM sessions WHERE id = ?')
+      .get(sessionId) as { project: string | null } | undefined)?.project ?? null;
+    const projectRoot = projectName
+      ? (getDb().prepare('SELECT root FROM projects WHERE name = ? AND archived = 0').get(projectName) as { root: string } | undefined)?.root ?? null
+      : null;
+    const root = projectRoot ?? join(paths.home, 'workbench');
+    mkdirSync(root, { recursive: true });
+
+    const plan = sink.plan === true;
+    const PLAN_TOOLS = ['fs_read', 'fs_list', 'fs_grep', 'skills_list', 'skill_view', 'memory_save'];
+    const chatTools: Record<string, BuiltinTool> = plan
+      ? Object.fromEntries(PLAN_TOOLS.map(n => [n, TOOLS[n]]))
+      : { ...TOOLS };
+    if (webAvailable()) Object.assign(chatTools, WEB_TOOLS);
+    if (!plan) {
+      Object.assign(chatTools, mcpToolbox());
+      chatTools.delegate = makeDelegateTool(this.cfg, this.providers, this.broker, sessionId, root, sessionId, {
+        onDelta: () => {},
+        onTool: sink.onTool ?? (() => {}),
+        ask: sink.ask ?? null,
+        notify: (event, params) => this.broadcast(event, params),
+      });
+    }
+    const specs = Object.values(chatTools).map(t => t.spec);
+    const ctx: ToolContext = { root, sessionId };
+
+    const workspace = `\n\n[WORKSPACE]\nFile and shell tools operate in: ${root}${projectName ? ` (project "${projectName}")` : ' (your workbench — scratch space; suggest registering a project when real work starts)'}.`;
+    const planNote = plan
+      ? '\n\n[PLAN MODE]\nRead, search, and think — change nothing. Writing and executing tools are sheathed this turn. End with a concrete numbered plan; the user leaves plan mode to execute it.'
+      : '';
+
     const { adapter, model: boundModel } = this.providers.resolve('chat');
     const model = adapter.resolveModel ? await adapter.resolveModel(boundModel) : boundModel;
-    const messages: ChatMessage[] = [{ role: 'system', content: this.systemPrompt(sessionId) }, ...history];
+    let messages: ChatMessage[] = [
+      { role: 'system', content: this.systemPrompt(sessionId) + workspace + planNote },
+      ...history,
+    ];
 
     const started = Date.now();
     let reply = '';
     const usage: Usage = {};
 
-    // The chat automaton's hands: web (when keyed) + deliberate memory.
-    // Read-risk only — nothing here needs an approval UI on the chat path,
-    // and the broker still receipts every call.
-    const chatTools: Record<string, BuiltinTool> = { memory_save: TOOLS.memory_save };
-    if (webAvailable()) {
-      chatTools.web_search = WEB_TOOLS.web_search;
-      chatTools.web_fetch = WEB_TOOLS.web_fetch;
-    }
-    const specs = Object.values(chatTools).map(t => t.spec);
-    const ctx: ToolContext = { root: paths.home, sessionId };
-
-    // Small tool loop — a conversation that reaches for the web, not an
-    // agent run. Text streams as it comes; segments join into one reply.
+    // The loop — a conversation that works. Text streams as it comes;
+    // segments join into one reply; compaction guards long tool runs.
     let nudged = false;
-    for (let round = 0; round < 5; round++) {
+    const roundCap = plan ? 6 : 12;
+    for (let round = 0; round < roundCap; round++) {
+      messages = await maybeCompact(this.providers, messages, this.cfg.memory.compactThreshold, sessionId);
       let segment = '';
       const calls: ToolCall[] = [];
-      for await (const ev of adapter.chat(model, messages, { tools: specs, maxTokens: 4096 })) {
+      for await (const ev of adapter.chat(model, messages, { tools: specs, maxTokens: 8192 })) {
         if (ev.type === 'text') {
           segment += ev.text;
           sink.onDelta?.(ev.text);
@@ -760,9 +815,11 @@ export class Hephd {
         let result: string;
         let ok = false;
         if (!tool) {
-          result = `unknown tool: ${call.name}`;
+          result = plan && TOOLS[call.name]
+            ? `[${call.name} is sheathed in plan mode — present the plan instead]`
+            : `unknown tool: ${call.name}`;
         } else {
-          const verdict = await this.broker.check(sessionId, call.name, tool.risk, call.args, null);
+          const verdict = await this.broker.check(sessionId, call.name, tool.risk, call.args, sink.ask ?? null);
           receipt('tool_call', { tool: call.name, allowed: verdict.allowed, via: verdict.via, args: summary }, sessionId);
           if (!verdict.allowed) {
             result = `[denied by permission broker (${verdict.via})]`;
@@ -775,7 +832,13 @@ export class Hephd {
             }
           }
         }
-        sink.onTool?.(call.name, summary, Date.now() - t0, ok, result.slice(0, 800));
+        // fs_write ships its preview — diff on overwrite (handler sets
+        // ctx.detail), content when new. Same contract as the dev lane.
+        const detail = call.name === 'fs_write' && ok
+          ? (ctx.detail ?? String(call.args.content ?? '').slice(0, 4000))
+          : undefined;
+        ctx.detail = undefined;
+        sink.onTool?.(call.name, summary, Date.now() - t0, ok, result.slice(0, 800), detail);
         saveMessage(sessionId, 'tool' as never, `[${call.name}] ${summary} → ${result.slice(0, 300)}`);
         messages.push({ role: 'tool', content: result, toolCallId: call.id, toolName: call.name });
       }
@@ -809,6 +872,10 @@ export class Hephd {
     if (foldPending(this.cfg, sessionId)) {
       foldBacklog(this.cfg, this.providers, sessionId).catch(err => console.error('[folding]', err));
     }
+
+    // Every surface learns the session moved — the shell refreshes the
+    // transcript it's watching; a Telegram exchange appears in the glass.
+    this.broadcast('session.updated', { sessionId });
 
     return { sessionId, text: reply, usage, delivered: true };
   }

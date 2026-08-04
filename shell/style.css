@@ -69,8 +69,8 @@ button, select { cursor: pointer; }
 
 #rail-nav { flex: none; overflow-y: auto; max-height: 46vh; }
 .nav-section {
-  font-size: 10px; letter-spacing: .22em; color: var(--ink-5);
-  padding: 12px 4px 6px;
+  font-family: var(--font-pixel); font-size: 15px; letter-spacing: .12em;
+  color: var(--ink-5); padding: 12px 4px 6px;
 }
 .nav-section__count { font-family: var(--font-mono); letter-spacing: 0; }
 .pin-mark { color: var(--ink-5); font-family: var(--font-mono); font-size: 10px; }
@@ -272,8 +272,8 @@ button, select { cursor: pointer; }
 
 /* ---- new chat ------------------------------------------------------- */
 .hero { text-align: center; width: 640px; max-width: calc(100% - 96px); margin: 9vh auto 0; }
-.hero__label { font-size: 10px; letter-spacing: .26em; color: var(--ink-5); margin-bottom: 14px; }
-.hero__h { font-size: 25px; font-weight: 500; letter-spacing: -.012em; color: var(--ink); }
+.hero__label { font-family: var(--font-pixel); font-size: 15px; letter-spacing: .14em; color: var(--ink-5); margin-bottom: 14px; }
+.hero__h { font-family: var(--font-mark); font-size: 27px; font-weight: 400; letter-spacing: .01em; color: var(--ink); }
 .hero__sub { font-size: 13.5px; line-height: 1.55; color: var(--ink-muted); margin-top: 8px; }
 .hero__sub .mono { font-family: var(--font-mono); color: var(--ink-3); }
 .recent { margin-top: 34px; border-top: 1px solid var(--hairline); padding-top: 14px; text-align: left; }

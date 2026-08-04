@@ -1,16 +1,19 @@
+# The flagship. Grimdark-first: near-black iron, ember accent, gold for
+# secondary heat. This is the default face of Hephaestus — marble is the
+# light option, not the identity.
 name: forge
 label: Forge
 polarity: dark
 palette:
-  bg: "#16130F"
-  bgAlt: "#1E1A14"
-  surface: "#262019"
-  border: "#3A3126"
-  fg: "#E8DFD0"
-  fgMuted: "#8F8574"
-  accent: "#E86F2D"
+  bg: "#100D0A"
+  bgAlt: "#151110"
+  surface: "#1D1712"
+  border: "#332920"
+  fg: "#E4D9C4"
+  fgMuted: "#8C8070"
+  accent: "#C75B29"
   accentAlt: "#D9A441"
-  positive: "#7A9A5E"
+  positive: "#6F8F55"
   warning: "#D9A441"
-  danger: "#C24434"
+  danger: "#B23B2E"
   info: "#7FA8A0"

@@ -15,6 +15,20 @@
   font-weight: 400 500;
   src: local('JetBrains Mono'), url('fonts/JetBrainsMono.woff2') format('woff2');
 }
+/* Austin's licensed pair — served from ~/.hephaestus/fonts by the daemon,
+   never committed. Missing files fall through to the open stacks. */
+@font-face {
+  font-family: 'PP Mondwest';
+  font-style: normal;
+  font-weight: 400;
+  src: local('PP Mondwest'), url('userfonts/ppmondwest-regular.otf') format('opentype');
+}
+@font-face {
+  font-family: 'PP NeueBit';
+  font-style: normal;
+  font-weight: 700;
+  src: local('PP NeueBit'), url('userfonts/ppneuebit-bold.otf') format('opentype');
+}
 
 :root {
   /* ---------- Surfaces (warm marble, low chroma) ---------- */
@@ -64,7 +78,8 @@
   /* ---------- Type ---------- */
   --font-ui:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-mark:  "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-mark:  "PP Mondwest", "EB Garamond", Georgia, serif;   /* wordmark + hero */
+  --font-pixel: "PP NeueBit", "JetBrains Mono", ui-monospace, monospace; /* labels with teeth */
 
   /* ---------- Radius: crisp ---------- */
   --r-control:  3px;
