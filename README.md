@@ -9,6 +9,8 @@ models as residents, your memory in one SQLite file you own.
 > life but can't act on it. Hephaestus is the forge between: an agent with
 > hands, grounded in deep memory.
 
+One Liner Install: curl -fsSL https://raw.githubusercontent.com/bopparino/Hephaestus/main/install.sh | sh
+
 **Status: pre-alpha. The forge is being built around the fire.**
 
 ## The documents
