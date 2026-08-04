@@ -1,0 +1,16 @@
+name: gypsum
+label: Gypsum
+polarity: light
+palette:
+  bg: "#FAFAF8"
+  bgAlt: "#F3F3F0"
+  surface: "#F0F0ED"
+  border: "#DBDBD6"
+  fg: "#1B1B1E"
+  fgMuted: "#71716F"
+  accent: "#B8860B"
+  accentAlt: "#5E5E66"
+  positive: "#54724E"
+  warning: "#B8860B"
+  danger: "#A03E34"
+  info: "#566878"

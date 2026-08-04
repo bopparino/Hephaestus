@@ -1,0 +1,19 @@
+# deps / build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# runtime & secrets — the brain lives in ~/.hephaestus, never in the repo
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+
+# licensed fonts (PP Mondwest is personal-use; never commit font binaries
+# that aren't OFL/Apache — shipped fonts get vendored deliberately later)
+assets/fonts/private/
+
+# os noise
+.DS_Store
+Thumbs.db

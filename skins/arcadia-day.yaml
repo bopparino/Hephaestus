@@ -1,0 +1,18 @@
+name: arcadia-day
+label: Arcadia Day
+polarity: light
+# Daylight inversion of the "Even in Arcadia" rice — gold deepened for
+# contrast on parchment, crimson kept.
+palette:
+  bg: "#F1ECDF"
+  bgAlt: "#EAE4D3"
+  surface: "#E6DFCC"
+  border: "#CFC7B0"
+  fg: "#2B2C30"
+  fgMuted: "#6E7076"
+  accent: "#A08334"
+  accentAlt: "#B12C50"
+  positive: "#6B7A4A"
+  warning: "#A08334"
+  danger: "#B12C50"
+  info: "#8A5769"

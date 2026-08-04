@@ -1,0 +1,16 @@
+name: talos
+label: Talos
+polarity: dark
+palette:
+  bg: "#141210"
+  bgAlt: "#1A1714"
+  surface: "#1D1915"
+  border: "#372F26"
+  fg: "#E5D9C3"
+  fgMuted: "#8C8172"
+  accent: "#B08D57"
+  accentAlt: "#6FA287"
+  positive: "#6FA287"
+  warning: "#C9A45C"
+  danger: "#B5533C"
+  info: "#8B9CA8"

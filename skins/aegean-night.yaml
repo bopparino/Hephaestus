@@ -1,0 +1,16 @@
+name: aegean-night
+label: Aegean Night
+polarity: dark
+palette:
+  bg: "#061A1C"
+  bgAlt: "#0A2124"
+  surface: "#0C2528"
+  border: "#16393C"
+  fg: "#DCE8E4"
+  fgMuted: "#6E8C8A"
+  accent: "#C08B4C"
+  accentAlt: "#4FB3A5"
+  positive: "#5FA184"
+  warning: "#C08B4C"
+  danger: "#C0564A"
+  info: "#4FB3A5"

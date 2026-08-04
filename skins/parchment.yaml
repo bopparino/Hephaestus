@@ -1,0 +1,17 @@
+name: parchment
+label: Parchment
+polarity: light
+# Rubrication (A03A2E) as the interactive accent — the manuscript's red ink.
+palette:
+  bg: "#F0E7D3"
+  bgAlt: "#EAE0C8"
+  surface: "#E7DCC2"
+  border: "#CDBFA0"
+  fg: "#3B2F1F"
+  fgMuted: "#7A6B54"
+  accent: "#8C5A22"
+  accentAlt: "#A03A2E"
+  positive: "#5F6E3E"
+  warning: "#8C5A22"
+  danger: "#A03A2E"
+  info: "#5E6E86"

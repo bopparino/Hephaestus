@@ -1,0 +1,17 @@
+name: arcadia
+label: Arcadia
+polarity: dark
+# "Even in Arcadia" — ported from the sketchybar colors.sh era palette.
+palette:
+  bg: "#2B2C30"
+  bgAlt: "#232428"
+  surface: "#313237"
+  border: "#4A4B50"
+  fg: "#D3C9AE"
+  fgMuted: "#888C91"
+  accent: "#C2A34E"
+  accentAlt: "#B12C50"
+  positive: "#8A9A6E"
+  warning: "#C2A34E"
+  danger: "#B12C50"
+  info: "#8A5769"

@@ -1,0 +1,16 @@
+name: nether
+label: Nether
+polarity: dark
+palette:
+  bg: "#131017"
+  bgAlt: "#18141E"
+  surface: "#1C1722"
+  border: "#2F2739"
+  fg: "#DED7E6"
+  fgMuted: "#837B92"
+  accent: "#A88FCC"
+  accentAlt: "#C0BFC7"
+  positive: "#7C9A78"
+  warning: "#C5A05A"
+  danger: "#B54A5E"
+  info: "#8FA2C8"

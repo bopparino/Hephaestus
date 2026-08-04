@@ -1,0 +1,16 @@
+name: forge
+label: Forge
+polarity: dark
+palette:
+  bg: "#16130F"
+  bgAlt: "#1E1A14"
+  surface: "#262019"
+  border: "#3A3126"
+  fg: "#E8DFD0"
+  fgMuted: "#8F8574"
+  accent: "#E86F2D"
+  accentAlt: "#D9A441"
+  positive: "#7A9A5E"
+  warning: "#D9A441"
+  danger: "#C24434"
+  info: "#7FA8A0"

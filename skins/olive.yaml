@@ -1,0 +1,16 @@
+name: olive
+label: Olive
+polarity: light
+palette:
+  bg: "#F0F1E6"
+  bgAlt: "#E9EBDB"
+  surface: "#E4E6D4"
+  border: "#C8CCAF"
+  fg: "#26291C"
+  fgMuted: "#666B52"
+  accent: "#6B7A3A"
+  accentAlt: "#A66A2E"
+  positive: "#6B7A3A"
+  warning: "#A66A2E"
+  danger: "#9E4436"
+  info: "#5C7A72"

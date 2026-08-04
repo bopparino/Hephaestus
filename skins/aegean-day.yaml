@@ -1,0 +1,16 @@
+name: aegean-day
+label: Aegean Day
+polarity: light
+palette:
+  bg: "#EDF3F1"
+  bgAlt: "#E4EDEA"
+  surface: "#DFEAE7"
+  border: "#BFD2CD"
+  fg: "#1C2F2E"
+  fgMuted: "#527270"
+  accent: "#1F7A6E"
+  accentAlt: "#B0803F"
+  positive: "#3E7A5C"
+  warning: "#B0803F"
+  danger: "#A64A3E"
+  info: "#1F7A6E"

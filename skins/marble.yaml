@@ -1,0 +1,16 @@
+name: marble
+label: Marble
+polarity: light
+palette:
+  bg: "#F5F4F1"
+  bgAlt: "#EFEDE9"
+  surface: "#ECEAE5"
+  border: "#D6D3CC"
+  fg: "#26262B"
+  fgMuted: "#6C6C74"
+  accent: "#7A2E2E"
+  accentAlt: "#5B5B66"
+  positive: "#556B4E"
+  warning: "#9A7B2E"
+  danger: "#7A2E2E"
+  info: "#4E6274"

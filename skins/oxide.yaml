@@ -1,0 +1,16 @@
+name: oxide
+label: Oxide
+polarity: dark
+palette:
+  bg: "#101619"
+  bgAlt: "#141B1F"
+  surface: "#172024"
+  border: "#2A383E"
+  fg: "#D5DEDE"
+  fgMuted: "#7A8C8E"
+  accent: "#57A38B"
+  accentAlt: "#8FA3AD"
+  positive: "#57A38B"
+  warning: "#C0A060"
+  danger: "#B25548"
+  info: "#8FA3AD"

@@ -1,0 +1,16 @@
+name: obsidian
+label: Obsidian
+polarity: dark
+palette:
+  bg: "#0A0A0B"
+  bgAlt: "#101012"
+  surface: "#131315"
+  border: "#26262A"
+  fg: "#E6E4E1"
+  fgMuted: "#77757F"
+  accent: "#D4AF37"
+  accentAlt: "#8C8C94"
+  positive: "#6F8F6A"
+  warning: "#D4AF37"
+  danger: "#B0453A"
+  info: "#7E8B99"

@@ -1,0 +1,16 @@
+name: lemnos
+label: Lemnos
+polarity: dark
+palette:
+  bg: "#191416"
+  bgAlt: "#20191B"
+  surface: "#221B1E"
+  border: "#3B2E32"
+  fg: "#E3D9D3"
+  fgMuted: "#8E7E7A"
+  accent: "#D14A3C"
+  accentAlt: "#C97F5E"
+  positive: "#7E9469"
+  warning: "#C97F5E"
+  danger: "#D14A3C"
+  info: "#9C8FA6"

@@ -1,0 +1,16 @@
+name: daybreak
+label: Daybreak
+polarity: light
+palette:
+  bg: "#F3EDE2"
+  bgAlt: "#EDE5D6"
+  surface: "#EAE2D3"
+  border: "#D4C8B2"
+  fg: "#2A241C"
+  fgMuted: "#6E6454"
+  accent: "#C25A1F"
+  accentAlt: "#9A7B2E"
+  positive: "#5E7A42"
+  warning: "#9A7B2E"
+  danger: "#A63A2C"
+  info: "#4E7A74"

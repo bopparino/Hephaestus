@@ -1,0 +1,17 @@
+name: terracotta
+label: Terracotta
+polarity: light
+# Black-figure amphora: clay ground, slip-black figures, pot-red accent.
+palette:
+  bg: "#EFE0D0"
+  bgAlt: "#E9D6C1"
+  surface: "#E5D0B9"
+  border: "#CBB194"
+  fg: "#241A12"
+  fgMuted: "#6E5B48"
+  accent: "#B5522A"
+  accentAlt: "#33281E"
+  positive: "#6A7444"
+  warning: "#A97B2F"
+  danger: "#B5522A"
+  info: "#5E6E80"
