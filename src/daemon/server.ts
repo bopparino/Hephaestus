@@ -194,8 +194,14 @@ export class Hephd {
 
       case 'session.list':
         return getDb()
-          .prepare('SELECT id, created_at, title, automaton, project FROM sessions WHERE archived = 0 ORDER BY id DESC LIMIT 50')
+          .prepare('SELECT id, created_at, title, automaton, project, pinned FROM sessions WHERE archived = 0 ORDER BY pinned DESC, id DESC LIMIT 50')
           .all();
+
+      case 'session.pin': {
+        if (typeof p.id !== 'number') throw new Error('session.pin needs id');
+        getDb().prepare('UPDATE sessions SET pinned = CASE WHEN pinned = 1 THEN 0 ELSE 1 END WHERE id = ?').run(p.id);
+        return { ok: true };
+      }
 
       case 'session.archive': {
         if (typeof p.id !== 'number') throw new Error('session.archive needs id');

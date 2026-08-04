@@ -545,15 +545,54 @@ async function main(): Promise<void> {
       console.log(`shell: ${url.split('#')[0]} (token in fragment)`);
       break;
     }
-    case 'skills':
+    case 'skills': {
+      if (rest[0] === 'import') {
+        // heph skills import <dir> — sweep SKILL.md directories in (e.g.)
+        // a Hermes install. Whole skill folders copy over (skills may
+        // carry helper scripts); anything executable gets counted and
+        // said out loud. Existing names are never overwritten.
+        const { readdirSync, statSync, cpSync, existsSync: exists } = await import('node:fs');
+        const { join: joinPath, basename } = await import('node:path');
+        const source = rest[1];
+        if (!source || !exists(source)) throw new Error('usage: heph skills import <dir>   (e.g. ~/.hermes/skills)');
+        const found: string[] = [];
+        const walk = (dir: string, depth: number): void => {
+          if (depth > 3) return;
+          for (const entry of readdirSync(dir)) {
+            if (entry.startsWith('.')) continue;
+            const full = joinPath(dir, entry);
+            if (!statSync(full).isDirectory()) continue;
+            if (exists(joinPath(full, 'SKILL.md'))) found.push(full);
+            else walk(full, depth + 1);
+          }
+        };
+        walk(source, 0);
+        const dest = joinPath(paths.home, 'skills');
+        let imported = 0, skipped = 0, withScripts = 0;
+        for (const skillDir of found) {
+          const name = basename(skillDir).toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+          const target = joinPath(dest, name);
+          if (exists(target)) { skipped++; continue; }
+          cpSync(skillDir, target, { recursive: true });
+          const extras = readdirSync(target).filter(f => f !== 'SKILL.md');
+          if (extras.length) withScripts++;
+          imported++;
+        }
+        console.log(`imported ${imported} skills from ${source} (${skipped} already present)`);
+        if (withScripts) {
+          console.log(`${withScripts} carry helper files beyond SKILL.md — the agent runs those through the shell gate like anything else`);
+        }
+        break;
+      }
       await withClient(async (client, skin) => {
         const accent = fg(skin.palette.accent);
         const muted = fg(skin.palette.fgMuted);
         const skills = await client.request<{ name: string; description: string }[]>('skills.list');
         if (!skills.length) console.log(`${muted}(no skills yet — the dev automaton proposes them, or drop SKILL.md dirs in ~/.hephaestus/skills)${RESET}`);
-        for (const s of skills) console.log(`${accent}${s.name}${RESET} — ${s.description}`);
+        for (const s of skills) console.log(`${accent}${s.name}${RESET} — ${s.description.slice(0, 90)}`);
       });
       break;
+    }
     default:
       console.log('usage: heph [chat [-m msg] [--project <p>] | dev [-C root] [--allow] "task" | ui | project [add] | receipts | skills | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
       process.exitCode = 1;

@@ -18,6 +18,51 @@ export type Risk = 'read' | 'write' | 'exec';
 export interface ToolContext {
   root: string;        // project root — fs tools are confined to it
   sessionId: number;
+  /** out-of-band rich preview for the shell (e.g. fs_write diffs) —
+   *  set by a handler, consumed and cleared by the agent loop */
+  detail?: string;
+}
+
+/** Plain LCS line diff for overwrite previews. Null when too large —
+ *  the caller falls back to a content preview. '@@diff' marks the format
+ *  for the shell. Long unchanged runs collapse to keep the card honest
+ *  about what changed rather than scrolling what didn't. */
+export function lineDiff(oldText: string, newText: string): string | null {
+  const a = oldText.split('\n');
+  const b = newText.split('\n');
+  if (a.length > 400 || b.length > 400) return null;
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const raw: string[] = [];
+  let i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { raw.push('  ' + a[i]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { raw.push('- ' + a[i]); i++; }
+    else { raw.push('+ ' + b[j]); j++; }
+  }
+  while (i < a.length) raw.push('- ' + a[i++]);
+  while (j < b.length) raw.push('+ ' + b[j++]);
+
+  const out: string[] = [];
+  let run: string[] = [];
+  const flushRun = () => {
+    if (run.length > 7) {
+      out.push(...run.slice(0, 3), `  ··· ${run.length - 6} unchanged ···`, ...run.slice(-3));
+    } else {
+      out.push(...run);
+    }
+    run = [];
+  };
+  for (const line of raw) {
+    if (line.startsWith('  ')) run.push(line);
+    else { flushRun(); out.push(line); }
+  }
+  flushRun();
+  return '@@diff\n' + out.slice(0, 240).join('\n');
 }
 
 export interface BuiltinTool {
@@ -88,7 +133,15 @@ export const TOOLS: Record<string, BuiltinTool> = {
       const abs = confine(ctx.root, String(args.path));
       mkdirSync(dirname(abs), { recursive: true });
       const existed = existsSync(abs);
-      writeFileSync(abs, String(args.content));
+      const content = String(args.content);
+      // overwrite → the shell gets a real diff, not a wall of new text
+      if (existed) {
+        try {
+          const before = readFileSync(abs, 'utf8');
+          ctx.detail = lineDiff(before, content) ?? content.slice(0, 4000);
+        } catch { /* unreadable old file — content preview will do */ }
+      }
+      writeFileSync(abs, content);
       // Artifact receipt — the shell's Artifacts view is a query over these.
       receipt('artifact', {
         path: abs, rel: relative(ctx.root, abs), root: ctx.root,

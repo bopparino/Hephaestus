@@ -133,6 +133,11 @@ const MIGRATIONS: string[] = [
     last_result TEXT
   );
   `,
+  // v7 — pinned sessions (the Hermes shift-click gesture). APPEND-ONLY:
+  // migrations are positional; inserting mid-array reruns strangers.
+  `
+  ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 let db: Database.Database | null = null;

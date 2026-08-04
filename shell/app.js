@@ -165,6 +165,11 @@ function onEvent(event, p) {
     renderSendState();
     refreshSessions();
   } else if (event === 'agent.tool') {
+    // a fresh dev chat's FIRST event is a tool event — adopt here too
+    if (state.awaitingSession && state.sessionId == null && p.sessionId) {
+      state.sessionId = p.sessionId;
+      state.awaitingSession = false;
+    }
     if (p.sessionId && p.sessionId !== state.sessionId) {
       state.inflight.add(p.sessionId);
       refreshSessions(); // background dev work — mark the row, don't render
@@ -212,7 +217,8 @@ const TOKEN_KEYS = ['--paper', '--paper-raised', '--paper-sunken', '--rail', '--
   '--hairline-rail', '--hairline-strong', '--window-border', '--separator',
   '--ink', '--ink-2', '--ink-3', '--ink-4', '--ink-5', '--ink-placeholder', '--ink-muted',
   '--oxblood', '--oxblood-hover', '--on-oxblood',
-  '--seg-active', '--focus-border', '--send-disabled', '--scrim'];
+  '--seg-active', '--focus-border', '--send-disabled', '--scrim',
+  '--diff-add-bg', '--diff-del-bg'];
 
 function applySkin(skin) {
   const root = document.documentElement.style;
@@ -235,6 +241,7 @@ function applySkin(skin) {
     // a light chip under light ink was the bug this section exists for.
     '--seg-active': p.border, '--focus-border': p.fgMuted,
     '--send-disabled': p.border, '--scrim': 'rgba(0, 0, 0, .45)',
+    '--diff-add-bg': 'rgba(130, 175, 95, .18)', '--diff-del-bg': 'rgba(205, 95, 75, .16)',
   };
   for (const [k, v] of Object.entries(map)) root.setProperty(k, v);
 }
@@ -387,14 +394,19 @@ async function refreshSessions() {
     const row = document.createElement('div');
     row.className = 'tree__row' + (child ? ' tree__row--child' : '');
     if (s.id === state.sessionId && state.view === 'chat') row.setAttribute('aria-current', 'true');
+    row.title = 'shift-click to pin';
     const working = state.inflight.has(s.id) ? '<span class="working">working</span> · ' : '';
+    const pin = s.pinned ? '<span class="pin-mark">⌗</span> ' : '';
     row.innerHTML = `
       <div class="tree__main">
-        <div class="tree__title">${esc(s.title ?? 'untitled')}</div>
+        <div class="tree__title">${pin}${esc(s.title ?? 'untitled')}</div>
         <div class="tree__meta">${working}${esc(s.automaton)} · ${esc(s.created_at.slice(5, 10))}</div>
       </div>
       <button class="del" title="archive">×</button>`;
-    row.querySelector('.tree__main').onclick = () => openSession(s.id);
+    row.querySelector('.tree__main').onclick = async ev => {
+      if (ev.shiftKey) { await rpc('session.pin', { id: s.id }); refreshSessions(); return; }
+      openSession(s.id);
+    };
     row.querySelector('.del').onclick = ev => {
       ev.stopPropagation();
       armDelete(ev.target, async () => {
@@ -405,6 +417,16 @@ async function refreshSessions() {
     return row;
   };
 
+  // PINNED floats above everything — project membership doesn't matter,
+  // the pin is the user saying "keep this at hand" (the Hermes gesture).
+  const pinned = state.sessions.filter(s => s.pinned);
+  if (pinned.length) {
+    const label = document.createElement('div');
+    label.className = 'nav-section'; label.textContent = 'PINNED';
+    nav.appendChild(label);
+    for (const s of pinned) nav.appendChild(sessionRow(s, false));
+  }
+
   const visibleProjects = state.projectFilter
     ? state.projects.filter(pr => pr.name === state.projectFilter)
     : state.projects;
@@ -414,7 +436,7 @@ async function refreshSessions() {
     label.className = 'nav-section'; label.textContent = 'PROJECTS';
     nav.appendChild(label);
     for (const pr of visibleProjects) {
-      const sessions = state.sessions.filter(s => s.project === pr.name);
+      const sessions = state.sessions.filter(s => s.project === pr.name && !s.pinned);
       const isFolded = folded(pr.name);
       const row = document.createElement('div');
       row.className = 'tree__row';
@@ -443,10 +465,11 @@ async function refreshSessions() {
     }
   }
 
-  const loose = state.sessions.filter(s => !s.project && !state.projectFilter);
+  const loose = state.sessions.filter(s => !s.project && !s.pinned && !state.projectFilter);
   if (loose.length) {
     const label = document.createElement('div');
-    label.className = 'nav-section'; label.textContent = 'CHATS';
+    label.className = 'nav-section';
+    label.innerHTML = `CHATS <span class="nav-section__count">${loose.length}</span>`;
     nav.appendChild(label);
     for (const s of loose.slice(0, 14)) nav.appendChild(sessionRow(s, false));
   }
@@ -641,12 +664,27 @@ function toolRowEl(p) {
     </div>
     <pre class="tool__out"></pre>`;
   row.querySelector('.tool__out').textContent = String(p.result ?? '');
-  // a write carries its content — show the code itself, opened on arrival
+  // a write carries its preview — a diff when overwriting, the content
+  // itself when the file is new; either way the row arrives open
   if (p.detail) {
-    const code = document.createElement('pre');
-    code.className = 'tool__code';
-    code.textContent = p.detail;
-    row.appendChild(code);
+    if (p.detail.startsWith('@@diff\n')) {
+      const diff = document.createElement('div');
+      diff.className = 'tool__diff';
+      for (const line of p.detail.slice(7).split('\n')) {
+        const span = document.createElement('span');
+        if (line.startsWith('+ ')) { span.className = 'dl-add'; span.textContent = line.slice(2); }
+        else if (line.startsWith('- ')) { span.className = 'dl-del'; span.textContent = line.slice(2); }
+        else if (line.includes('···')) { span.className = 'dl-gap'; span.textContent = line.trim(); }
+        else { span.textContent = line.slice(2); }
+        diff.appendChild(span);
+      }
+      row.appendChild(diff);
+    } else {
+      const code = document.createElement('pre');
+      code.className = 'tool__code';
+      code.textContent = p.detail;
+      row.appendChild(code);
+    }
     row.classList.add('open');
   }
   row.onclick = () => row.classList.toggle('open');

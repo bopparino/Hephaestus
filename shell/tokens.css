@@ -58,6 +58,8 @@
   --focus-border:     #B9B1A4; /* composer :focus-within */
   --send-disabled:    #C9B9B7; /* Send while field is empty */
   --scrim:            rgba(33, 30, 26, .28); /* overlay backdrop */
+  --diff-add-bg:      rgba(101, 141, 74, .16);  /* diff card: added line */
+  --diff-del-bg:      rgba(164, 66, 52, .13);   /* diff card: removed line */
 
   /* ---------- Type ---------- */
   --font-ui:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;

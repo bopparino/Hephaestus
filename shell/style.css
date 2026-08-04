@@ -26,19 +26,17 @@ button, select { cursor: pointer; }
   background: var(--rail); border-right: 1px solid var(--hairline-rail);
   display: flex; flex-direction: column; padding: 18px 12px 12px;
 }
-.wordmark { padding: 0 4px 16px; }
-.wordmark__greek {
-  font-family: var(--font-mark); font-weight: 500; font-size: 20px;
-  letter-spacing: .155em; color: var(--oxblood);
-}
-.wordmark__sub {
-  font-size: 10px; letter-spacing: .26em; color: var(--ink-5); margin-top: 3px;
+/* The Greek, dialed back: one quiet serif word. The letterform IS the
+   brand now — no caps block, no subtitle, oxblood saved for work. */
+.wordmark {
+  font-family: var(--font-mark); font-weight: 500; font-size: 17px;
+  color: var(--ink-2); padding: 2px 10px 14px; letter-spacing: .02em;
 }
 
 .switcher {
   display: flex; align-items: baseline; gap: 7px; width: 100%;
   border: 1px solid var(--hairline-rail); border-radius: var(--r-control);
-  background: var(--paper-raised); padding: 8px 10px; margin-bottom: 10px;
+  background: var(--paper-raised); padding: 8px 10px; margin: 10px 0;
   text-align: left;
 }
 .switcher:hover { background: var(--stone); }
@@ -74,6 +72,8 @@ button, select { cursor: pointer; }
   font-size: 10px; letter-spacing: .22em; color: var(--ink-5);
   padding: 12px 4px 6px;
 }
+.nav-section__count { font-family: var(--font-mono); letter-spacing: 0; }
+.pin-mark { color: var(--ink-5); font-family: var(--font-mono); font-size: 10px; }
 .tree__row {
   display: flex; align-items: center; gap: 4px; width: 100%;
   padding: 6px 8px; border-radius: var(--r-control); cursor: pointer;
@@ -227,6 +227,20 @@ button, select { cursor: pointer; }
   white-space: pre; overflow-x: auto;
 }
 .tool__row.open .tool__out { display: block; }
+/* diff card — Hermes-style red/green, tinted not painted */
+.tool__diff {
+  display: none; margin: 0 13px 10px 79px; padding: 8px 0;
+  background: var(--paper-raised); border: 1px solid var(--hairline);
+  border-radius: var(--r-control);
+  font-size: 11px; line-height: 1.6; color: var(--ink-3);
+  overflow-x: auto; max-height: 320px; overflow-y: auto;
+}
+.tool__row.open .tool__diff { display: block; animation: tok .14s ease-out; }
+.tool__diff span { display: block; padding: 0 12px; white-space: pre; }
+.tool__diff .dl-add { background: var(--diff-add-bg); }
+.tool__diff .dl-del { background: var(--diff-del-bg); color: var(--ink-5); }
+.tool__diff .dl-gap { color: var(--ink-5); }
+
 /* live write preview — the code itself, revealed as it lands */
 .tool__code {
   display: none; margin: 0 13px 10px 79px; padding: 10px 12px;

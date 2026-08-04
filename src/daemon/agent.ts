@@ -187,11 +187,12 @@ export async function runAgent(
       }
 
       const ms = Date.now() - started;
-      // fs_write ships the written content so the shell can show the code
-      // as it lands — the live preview is the work itself, not a receipt.
+      // fs_write ships its preview: a diff when overwriting (set by the
+      // handler via ctx.detail), the content itself when the file is new.
       const detail = call.name === 'fs_write' && ok
-        ? String(call.args.content ?? '').slice(0, 4000)
+        ? (ctx.detail ?? String(call.args.content ?? '').slice(0, 4000))
         : undefined;
+      ctx.detail = undefined;
       events.onTool(call.name, summarize(call), ms, ok, result.slice(0, 800), detail);
       saveMessage(sessionId, 'tool' as never, `[${call.name}] ${summarize(call)} → ${result.slice(0, 300)}`);
       messagesRef.push({ role: 'tool', content: result, toolCallId: call.id, toolName: call.name });
