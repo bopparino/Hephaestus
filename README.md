@@ -11,7 +11,7 @@ models as residents, your memory in one SQLite file you own.
 
 One Liner Install: curl -fsSL https://raw.githubusercontent.com/bopparino/Hephaestus/main/install.sh | sh
 
-**Status: pre-alpha. The forge is being built around the fire.**
+**Status: pre-alpha.**
 
 ## The documents
 
