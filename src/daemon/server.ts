@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Config } from './config.js';
-import { createSession, getDb, receipt, saveMessage } from './db.js';
+import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { loadSkins } from './skins.js';
 import { initEmbeddings, embed } from './embeddings.js';
 import { addFact, coreFacts, forgetFact, recallEpisodes, recallFacts, renderCore, renderRecall } from './memory.js';
@@ -143,9 +143,24 @@ export class Hephd {
 
       case 'chat.send': {
         if (typeof p.text !== 'string' || !p.text.trim()) throw new Error('chat.send needs text');
-        const sessionId = typeof p.sessionId === 'number' ? p.sessionId : createSession('chat');
+        const sessionId = typeof p.sessionId === 'number'
+          ? p.sessionId
+          : createSession('chat', this.resolveProject(p.project));
         return this.enqueue(sessionId, () => this.exchange(ws, req.id, sessionId, p.text as string));
       }
+
+      case 'project.add': {
+        if (typeof p.name !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(p.name)) {
+          throw new Error('project.add needs a kebab-case name');
+        }
+        if (typeof p.root !== 'string') throw new Error('project.add needs root');
+        getDb().prepare('INSERT INTO projects (name, root) VALUES (?, ?)').run(p.name, p.root);
+        receipt('project_add', { name: p.name, root: p.root });
+        return { ok: true };
+      }
+
+      case 'project.list':
+        return getDb().prepare('SELECT name, root, created_at FROM projects WHERE archived = 0 ORDER BY name').all();
 
       case 'memory.list': {
         const where = p.core === true ? 'AND core = 1' : '';
@@ -192,8 +207,14 @@ export class Hephd {
 
       case 'agent.run': {
         if (typeof p.task !== 'string' || !p.task.trim()) throw new Error('agent.run needs task');
-        if (typeof p.root !== 'string') throw new Error('agent.run needs root');
-        const sessionId = typeof p.sessionId === 'number' ? p.sessionId : createSession('dev');
+        const project = this.resolveProject(p.project)
+          ?? (typeof p.root === 'string' ? this.projectByRoot(p.root) : null);
+        const projectRoot = project
+          ? (getDb().prepare('SELECT root FROM projects WHERE name = ?').get(project) as { root: string }).root
+          : null;
+        const root = typeof p.root === 'string' ? p.root : projectRoot;
+        if (!root) throw new Error('agent.run needs root (or a registered project)');
+        const sessionId = typeof p.sessionId === 'number' ? p.sessionId : createSession('dev', project);
         if (p.sessionGrantAll === true) {
           // The CLI's --allow flag: pre-grant the write/exec tools for this
           // session. Receipted per-tool; the hardline tier still applies.
@@ -201,7 +222,7 @@ export class Hephd {
         }
         return this.enqueue(sessionId, () =>
           runAgent(this.cfg, this.providers, this.broker,
-            { sessionId, root: p.root as string, task: p.task as string },
+            { sessionId, root, task: p.task as string },
             {
               onDelta: text => this.send(ws, { event: 'agent.delta', params: { reqId: req.id, text } }),
               onTool: (name, summary, ms, ok) =>
@@ -240,6 +261,22 @@ export class Hephd {
     }
   }
 
+  /** Validate a client-supplied project name against the registry. */
+  private resolveProject(name: unknown): string | null {
+    if (typeof name !== 'string' || !name) return null;
+    const row = getDb().prepare('SELECT name FROM projects WHERE name = ? AND archived = 0').get(name);
+    if (!row) throw new Error(`unknown project: ${name} (heph project add ${name} <root>)`);
+    return name;
+  }
+
+  /** Auto-bind: a dev run inside a registered root belongs to that project. */
+  private projectByRoot(root: string): string | null {
+    const row = getDb()
+      .prepare('SELECT name FROM projects WHERE archived = 0 AND ? LIKE root || \'%\' ORDER BY length(root) DESC LIMIT 1')
+      .get(root) as { name: string } | undefined;
+    return row?.name ?? null;
+  }
+
   /** Per-session serialization — a session is one conversation, in order. */
   private enqueue<T>(sessionId: number, work: () => Promise<T>): Promise<T> {
     const tail = this.sessionQueues.get(sessionId) ?? Promise.resolve();
@@ -248,11 +285,13 @@ export class Hephd {
     return run;
   }
 
-  /** IDENTITY + frozen core snapshot — assembled once per session (dir. #7). */
+  /** IDENTITY + frozen core snapshot — assembled once per session (dir. #7).
+   *  Core = global + the session's project scope: switching projects
+   *  switches what the brain reaches for. */
   private systemPrompt(sessionId: number): string {
     let snapshot = this.systemSnapshots.get(sessionId);
     if (snapshot === undefined) {
-      const core = renderCore('global', this.cfg.memory.coreBudget);
+      const core = renderCore(sessionScope(sessionId), this.cfg.memory.coreBudget);
       snapshot = core ? `${IDENTITY}\n\n${core}` : IDENTITY;
       this.systemSnapshots.set(sessionId, snapshot);
     }
@@ -287,7 +326,7 @@ export class Hephd {
     if (!isTrivial(text)) {
       const queryVec = await embed(text, 1500); // best-effort; null degrades fine
       recallBlock = renderRecall(
-        recallFacts(text, { queryVec }),
+        recallFacts(text, { scope: sessionScope(sessionId), queryVec }),
         recallEpisodes(text, { queryVec }),
       );
     }

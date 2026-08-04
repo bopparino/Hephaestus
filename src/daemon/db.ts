@@ -102,6 +102,17 @@ const MIGRATIONS: string[] = [
     revoked INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // v4 — Phase 3: projects as first-class. sessions.project holds the name;
+  // facts scope to 'project:<name>' and recall switches with the session.
+  `
+  CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    name TEXT NOT NULL UNIQUE,
+    root TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ];
 
 let db: Database.Database | null = null;
@@ -126,10 +137,15 @@ export function receipt(kind: string, detail: Record<string, unknown>, sessionId
     .run(sessionId ?? null, kind, JSON.stringify(detail));
 }
 
-export function createSession(automaton = 'chat'): number {
+export function createSession(automaton = 'chat', project: string | null = null): number {
   return Number(
-    getDb().prepare('INSERT INTO sessions (automaton) VALUES (?)').run(automaton).lastInsertRowid,
+    getDb().prepare('INSERT INTO sessions (automaton, project) VALUES (?, ?)').run(automaton, project).lastInsertRowid,
   );
+}
+
+export function sessionScope(sessionId: number): string {
+  const row = getDb().prepare('SELECT project FROM sessions WHERE id = ?').get(sessionId) as { project: string | null } | undefined;
+  return row?.project ? `project:${row.project}` : 'global';
 }
 
 export function saveMessage(

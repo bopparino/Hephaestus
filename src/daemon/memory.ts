@@ -85,7 +85,11 @@ export function recallFacts(text: string, opts: { scope?: string; queryVec?: Buf
   const add = (rows: Fact[]) => rows.forEach(r => pool.set(r.id, r));
   const scoped = "active = 1 AND core = 0 AND scope IN ('global', ?)";
   if (ftsRanks.size) {
-    add(db.prepare(`SELECT * FROM facts WHERE id IN (${[...ftsRanks.keys()].join(',')}) AND core = 0`).all() as Fact[]);
+    // Scope filter applies HERE too — without it, project facts ride a
+    // keyword match into global recall (found live; scope must be airtight).
+    add(db.prepare(
+      `SELECT * FROM facts WHERE id IN (${[...ftsRanks.keys()].join(',')}) AND ${scoped}`,
+    ).all(scope) as Fact[]);
   }
   add(db.prepare(`SELECT * FROM facts WHERE ${scoped} ORDER BY updated_at DESC LIMIT 20`).all(scope) as Fact[]);
   add(db.prepare(`SELECT * FROM facts WHERE ${scoped} AND salience >= 0.7 ORDER BY salience DESC LIMIT 20`).all(scope) as Fact[]);

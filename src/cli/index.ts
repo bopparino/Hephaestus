@@ -133,7 +133,7 @@ async function withClient<T>(fn: (c: Client, skin: ResolvedSkin) => Promise<T>):
   }
 }
 
-async function cmdChat(message?: string): Promise<void> {
+async function cmdChat(message?: string, project?: string): Promise<void> {
   await withClient(async (client, skin) => {
     const accent = fg(skin.palette.accent);
     const muted = fg(skin.palette.fgMuted);
@@ -153,7 +153,7 @@ async function cmdChat(message?: string): Promise<void> {
       try {
         const result = await client.request<{ sessionId: number; usage: { inputTokens?: number; outputTokens?: number } }>(
           'chat.send',
-          { text, sessionId },
+          { text, sessionId, ...(project ? { project } : {}) },
         );
         sessionId = result.sessionId;
         const u = result.usage;
@@ -343,8 +343,32 @@ async function main(): Promise<void> {
       await import('../daemon/index.js'); // foreground, logs to stderr
       break;
     case 'chat': {
+      let project: string | undefined;
+      const pIdx = rest.indexOf('--project');
+      if (pIdx !== -1) {
+        project = rest[pIdx + 1];
+        rest.splice(pIdx, 2);
+      }
       const mIdx = rest.indexOf('-m');
-      await cmdChat(mIdx !== -1 ? rest.slice(mIdx + 1).join(' ') : undefined);
+      await cmdChat(mIdx !== -1 ? rest.slice(mIdx + 1).join(' ') : undefined, project);
+      break;
+    }
+    case 'project': {
+      await withClient(async (client, skin) => {
+        const accent = fg(skin.palette.accent);
+        const muted = fg(skin.palette.fgMuted);
+        if (rest[0] === 'add') {
+          const name = rest[1];
+          const root = rest[2] ?? process.cwd();
+          if (!name) throw new Error('usage: heph project add <name> [root]');
+          await client.request('project.add', { name, root });
+          console.log(`${muted}registered ${name} → ${root}${RESET}`);
+          return;
+        }
+        const projects = await client.request<{ name: string; root: string }[]>('project.list');
+        if (!projects.length) console.log(`${muted}(no projects — heph project add <name> [root])${RESET}`);
+        for (const proj of projects) console.log(`${accent}${proj.name}${RESET} ${muted}${proj.root}${RESET}`);
+      });
       break;
     }
     case 'skins':

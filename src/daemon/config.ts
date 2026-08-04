@@ -17,6 +17,7 @@ export interface Config {
     recentWindow: number;   // verbatim messages in the prompt
     foldChunk: number;      // messages folded into one episode
     coreBudget: number;     // chars — the always-visible tier-1 budget
+    compactThreshold: number; // est. tokens before an agent run compacts
   };
 }
 
@@ -37,7 +38,7 @@ const DEFAULTS: Config = {
   ui: { skinDark: 'forge', skinLight: 'daybreak' },
   user: { name: 'the user' },
   channels: { telegram: { ownerId: null } },
-  memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200 },
+  memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200, compactThreshold: 16000 },
 };
 
 const DEFAULT_TOML = `# Hephaestus — ~/.hephaestus/config.toml
@@ -92,5 +93,6 @@ export function loadConfig(): Config {
   if (typeof raw.memory?.recent_window === 'number') cfg.memory.recentWindow = raw.memory.recent_window;
   if (typeof raw.memory?.fold_chunk === 'number') cfg.memory.foldChunk = raw.memory.fold_chunk;
   if (typeof raw.memory?.core_budget === 'number') cfg.memory.coreBudget = raw.memory.core_budget;
+  if (typeof raw.memory?.compact_threshold === 'number') cfg.memory.compactThreshold = raw.memory.compact_threshold;
   return cfg;
 }

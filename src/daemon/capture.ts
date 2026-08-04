@@ -1,5 +1,5 @@
 import type { Config } from './config.js';
-import { getDb, receipt } from './db.js';
+import { getDb, receipt, sessionScope } from './db.js';
 import { addFact, coreFacts, setCore } from './memory.js';
 import { utilityJson } from './utility.js';
 import type { Providers } from '../providers/roles.js';
@@ -32,7 +32,7 @@ export function bumpCaptureCounter(sessionId: number, captureEvery: number): boo
 }
 
 interface CaptureResult {
-  facts?: { category?: string; content?: string; importance?: number; salience?: number }[];
+  facts?: { category?: string; content?: string; importance?: number; salience?: number; global?: boolean }[];
   core?: {
     promote_ids?: number[];
     demote_ids?: number[];
@@ -52,6 +52,10 @@ export async function runCapture(cfg: Config, providers: Providers, sessionId: n
   if (!recent.length) return;
 
   const name = cfg.user.name;
+  const scope = sessionScope(sessionId);
+  const scopeNote = scope === 'global'
+    ? ''
+    : `\nThis conversation belongs to the "${scope.slice(8)}" project. Facts default to that project's scope; mark a fact {"global": true} ONLY if it is about ${name} themselves or clearly crosses projects (identity, standing preferences).`;
   const transcript = recent.map(m => `${m.role === 'user' ? name : 'Hephaestus'}: ${m.content}`).join('\n');
   const known = (db.prepare('SELECT content FROM facts WHERE active = 1 ORDER BY updated_at DESC LIMIT 60').all() as { content: string }[])
     .map(f => `- ${f.content}`).join('\n');
@@ -76,7 +80,7 @@ STRICT RULES — memory integrity depends on these:
 - Procedures, task progress, and completed-work logs are NOT facts — procedures belong in the skills library, the transcript already has the rest. Skip them here.
 - Do NOT re-extract facts already known.
 Categories: "user" (who ${name} is), "project" (ongoing work), "decision" (what was chosen and why — the load-bearing category), "preference" (how ${name} likes things done), "reference" (pointers), "general".
-Rate each: importance 1-10, salience 0-1 (0.1 = trivia, 0.9 = defining).
+Rate each: importance 1-10, salience 0-1 (0.1 = trivia, 0.9 = defining).${scopeNote}
 
 JOB 2 — CURATE the MEMORY CORE (the always-visible tier, budget ${cfg.memory.coreBudget} chars, currently ${coreUsed}). Promote a known fact to core only if it should shape EVERY future conversation (identity, standing conventions, active long-arc work). Demote core entries that no longer earn the budget. You may rewrite a core entry for concision. Current core:
 ${coreList || '(empty)'}
@@ -103,6 +107,7 @@ ${known || '(nothing yet)'}`,
     addFact({
       content: f.content.trim(),
       category: CATEGORIES.has(f.category ?? '') ? f.category : 'general',
+      scope: f.global === true ? 'global' : scope,
       importance: f.importance,
       salience: f.salience ?? null,
       source: 'capture',

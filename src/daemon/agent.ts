@@ -1,5 +1,6 @@
 import type { Config } from './config.js';
-import { getDb, receipt, saveMessage } from './db.js';
+import { getDb, receipt, saveMessage, sessionScope } from './db.js';
+import { maybeCompact } from './compact.js';
 import { renderCore } from './memory.js';
 import { TOOLS, toolSpecs, type ToolContext } from './tools.js';
 import type { AskRequest, PermissionBroker } from './permissions.js';
@@ -54,7 +55,7 @@ export async function runAgent(
   const { sessionId, root, task } = opts;
   const ctx: ToolContext = { root, sessionId };
 
-  const core = renderCore('global', cfg.memory.coreBudget);
+  const core = renderCore(sessionScope(sessionId), cfg.memory.coreBudget);
   const system = core ? `${DEV_CHARTER(root)}\n\n${core}` : DEV_CHARTER(root);
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
@@ -67,10 +68,14 @@ export async function runAgent(
   const specs = toolSpecs(DEV_TOOLS);
 
   let totalToolCalls = 0;
+  let messagesRef = messages;
   for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+    // Compaction check before each model call — a long run must not drown
+    // its own window mid-task. The DB transcript is untouched.
+    messagesRef = await maybeCompact(providers, messagesRef, cfg.memory.compactThreshold, sessionId);
     let text = '';
     const calls: ToolCall[] = [];
-    for await (const ev of adapter.chat(model, messages, { tools: specs, maxTokens: 8192 })) {
+    for await (const ev of adapter.chat(model, messagesRef, { tools: specs, maxTokens: 8192 })) {
       if (ev.type === 'text') {
         text += ev.text;
         events.onDelta(ev.text);
@@ -79,7 +84,7 @@ export async function runAgent(
       }
     }
 
-    messages.push({ role: 'assistant', content: text, ...(calls.length ? { toolCalls: calls } : {}) });
+    messagesRef.push({ role: 'assistant', content: text, ...(calls.length ? { toolCalls: calls } : {}) });
     if (text.trim()) saveMessage(sessionId, 'assistant', text);
 
     if (!calls.length) {
@@ -119,7 +124,7 @@ export async function runAgent(
       const ms = Date.now() - started;
       events.onTool(call.name, summarize(call), ms, ok);
       saveMessage(sessionId, 'tool' as never, `[${call.name}] ${summarize(call)} → ${result.slice(0, 300)}`);
-      messages.push({ role: 'tool', content: result, toolCallId: call.id, toolName: call.name });
+      messagesRef.push({ role: 'tool', content: result, toolCallId: call.id, toolName: call.name });
     }
   }
 
