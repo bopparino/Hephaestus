@@ -146,3 +146,12 @@ its dark sibling. No theme-able *layout* — skins recolor, they never
 rearrange. And nothing in this file justifies breaking §2's doctrine:
 when mood and usability fight, usability wins and the mood finds another
 way in.
+
+**No AI-SaaS tells** (locked 2026-08-04, per Austin, Grok as reference):
+no pill badges, no fingernail accent chips, no bordered tag confetti on
+every row — metadata is plain muted text. Flat over boxed: hairline
+separators and background tints carry structure; borders are earned, not
+default. No emojis anywhere in UI chrome — geometric glyphs (›, ·) or
+words. Hierarchy comes from type (size, weight, spacing, the display
+face used sparingly), not from decoration. When in doubt: remove the
+border, remove the badge, add whitespace.

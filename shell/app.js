@@ -30,8 +30,8 @@ function connect() {
   ws.onopen = async () => {
     setConn('forge linked', 'ok');
     await loadSkins();
+    state.projects = await rpc('project.list'); // before the sidebar renders groups
     await refreshSessions();
-    state.projects = await rpc('project.list');
   };
   ws.onclose = () => {
     setConn('link lost — rekindling…', 'bad');
@@ -72,9 +72,9 @@ function onEvent(event, p) {
   } else if (event === 'agent.tool') {
     const row = document.createElement('div');
     row.className = 'tool-row' + (p.ok ? '' : ' failed');
-    row.innerHTML = `<span class="hammer">⚒</span> ${esc(p.name)} ${esc(p.summary)} <span style="opacity:.6">(${p.ms}ms)</span>`;
+    row.innerHTML = `<span class="mark">›</span> ${esc(p.name)} ${esc(p.summary)} <span style="opacity:.6">${p.ms}ms</span>`;
     liveBody?.parentElement?.before(row);
-    liveBody && startLiveMessage(); // tool output splits the stream — new bubble
+    liveBody && startLiveMessage(); // tool output splits the stream — new block
   } else if (event === 'approval.request') {
     $('approval-tool').textContent = `${p.tool} [${p.risk}]`;
     $('approval-summary').textContent = p.summary;
@@ -127,19 +127,87 @@ function applySkin(skin) {
 
 // ---- sessions / transcript ------------------------------------------------
 
+// Sidebar: PROJECTS (each a space, its chats nested) then CHATS (loose).
+// Metadata is plain muted text — no badges, no pills (AESTHETIC §5).
 async function refreshSessions() {
   state.sessions = await rpc('session.list');
-  const nav = $('sessions');
+  const nav = $('side-nav');
   nav.innerHTML = '';
-  for (const s of state.sessions) {
+
+  const sessionItem = (s, nested) => {
     const item = document.createElement('div');
-    item.className = 'session-item' + (s.id === state.sessionId ? ' active' : '');
+    item.className = 'session-item' + (nested ? '' : ' loose') + (s.id === state.sessionId && state.view === 'chat' ? ' active' : '');
     item.innerHTML = `
-      <div class="session-title">${esc(s.title ?? '(untitled)')}</div>
-      <div class="session-meta"><span class="badge">${esc(s.automaton)}</span>${s.project ? `<span class="badge">@${esc(s.project)}</span>` : ''}<span>${esc(s.created_at.slice(5, 16))}</span></div>`;
+      <div class="session-title">${esc(s.title ?? 'untitled')}</div>
+      <div class="session-meta">${esc(s.automaton)} · ${esc(s.created_at.slice(5, 10))}</div>`;
     item.onclick = () => openSession(s.id);
-    nav.appendChild(item);
+    return item;
+  };
+
+  if (state.projects.length) {
+    const label = document.createElement('div');
+    label.className = 'nav-section';
+    label.textContent = 'PROJECTS';
+    nav.appendChild(label);
+    for (const proj of state.projects) {
+      const sessions = state.sessions.filter(s => s.project === proj.name);
+      const row = document.createElement('div');
+      row.className = 'proj-row' + (state.view === 'space' && state.spaceName === proj.name ? ' active' : '');
+      row.innerHTML = `<span class="n">${esc(proj.name)}</span><span class="c">${sessions.length}</span>`;
+      row.onclick = () => openProjectSpace(proj.name);
+      nav.appendChild(row);
+      for (const s of sessions.slice(0, 6)) nav.appendChild(sessionItem(s, true));
+    }
   }
+
+  const loose = state.sessions.filter(s => !s.project);
+  if (loose.length) {
+    const label = document.createElement('div');
+    label.className = 'nav-section';
+    label.textContent = 'CHATS';
+    nav.appendChild(label);
+    for (const s of loose) nav.appendChild(sessionItem(s, false));
+  }
+}
+
+// A project's dedicated space: identity, its chats, its memory footprint.
+async function openProjectSpace(name) {
+  state.view = 'space';
+  state.spaceName = name;
+  const proj = state.projects.find(p => p.name === name);
+  const sessions = state.sessions.filter(s => s.project === name);
+  const { facts } = await rpc('memory.list');
+  const scoped = facts.filter(f => f.scope === `project:${name}`);
+  setHead(`project · ${name}`);
+  const view = $('view');
+  $('main').classList.remove('hero');
+  view.innerHTML = '';
+  const space = document.createElement('div');
+  space.className = 'space';
+  space.innerHTML = `
+    <div class="space-name">${esc(name)}</div>
+    <div class="space-root">${esc(proj?.root ?? '')}</div>
+    <div class="space-stats">${sessions.length} chat${sessions.length === 1 ? '' : 's'} · ${scoped.length} scoped memor${scoped.length === 1 ? 'y' : 'ies'}</div>
+    <div class="space-actions"><button id="space-new" class="row-btn" style="width:auto"><span>new chat in ${esc(name)}</span></button></div>
+    <div class="space-list"></div>`;
+  view.appendChild(space);
+  const list = space.querySelector('.space-list');
+  for (const s of sessions) {
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    item.innerHTML = `
+      <div class="session-title">${esc(s.title ?? 'untitled')}</div>
+      <div class="session-meta">${esc(s.automaton)} · ${esc(s.created_at.slice(0, 16).replace('T', ' '))}</div>`;
+    item.onclick = () => openSession(s.id);
+    list.appendChild(item);
+  }
+  space.querySelector('#space-new').onclick = () => {
+    newChat();
+    state.project = name;
+    renderChips();
+    $('input').focus();
+  };
+  refreshSessions();
 }
 
 async function openSession(id) {
@@ -149,6 +217,7 @@ async function openSession(id) {
   state.project = session?.project ?? null;
   renderChips();
   setHead(session?.title ?? `session ${id}`);
+  $('main').classList.remove('hero');
   const messages = await rpc('session.messages', { sessionId: id });
   const view = $('view');
   view.innerHTML = '';
@@ -160,10 +229,17 @@ async function openSession(id) {
 function newChat() {
   state.view = 'chat';
   state.sessionId = null;
+  state.project = null;
   state.refs = [];
   renderChips();
   setHead('new chat');
-  $('view').innerHTML = '<div class="empty">the forge is listening</div>';
+  // the Grok move: empty chat centers the input and gets out of the way
+  $('main').classList.add('hero');
+  $('view').innerHTML = `
+    <div class="hero-mark">
+      <div class="g">ΗΦΑΙΣΤΟΣ</div>
+      <div class="t">what are we forging?</div>
+    </div>`;
   refreshSessions();
 }
 
@@ -192,6 +268,8 @@ async function send() {
   const text = input.value.trim();
   if (!text || state.busy) return;
   if (state.view !== 'chat') { state.view = 'chat'; $('view').innerHTML = ''; }
+  $('main').classList.remove('hero');
+  if ($('view').querySelector('.hero-mark')) $('view').innerHTML = '';
   state.busy = true;
   $('send').disabled = true;
   input.value = '';
@@ -347,7 +425,7 @@ async function showMemory() {
   const factRow = f => `
     <div class="fact">
       <span class="fid">#${f.id} ${esc(f.scope === 'global' ? '' : f.scope.slice(8))}</span>
-      <span class="fbody">${esc(f.content)} <span style="color:var(--fg-muted);font-size:11px">[${esc(f.category)}·i${f.importance}]</span></span>
+      <span class="fbody">${esc(f.content)} <span class="fmeta">${esc(f.category)} · i${f.importance}</span></span>
     </div>`;
   $('view').innerHTML = `
     <div class="mem-section">
@@ -373,8 +451,14 @@ async function showReceipts() {
 // ---- wiring ---------------------------------------------------------------
 
 $('new-chat').onclick = newChat;
-document.querySelectorAll('.nav-btn').forEach(btn =>
+document.querySelectorAll('[data-view]').forEach(btn =>
   btn.addEventListener('click', () => (btn.dataset.view === 'memory' ? showMemory() : showReceipts())));
+
+// keyboard: the 2026-hub basics — search and new chat from anywhere
+window.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); $('search').focus(); $('search').select(); }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'n') { e.preventDefault(); newChat(); $('input').focus(); }
+});
 
 $('send').onclick = send;
 $('input').addEventListener('keydown', e => {

@@ -14,15 +14,14 @@
         <div class="brand-latin">HEPHAESTUS</div>
       </div>
       <div id="searchbox">
-        <input id="search" type="text" placeholder="search the transcripts…" autocomplete="off" spellcheck="false">
+        <input id="search" type="text" placeholder="search" autocomplete="off" spellcheck="false">
+        <span class="kbd">⌘K</span>
       </div>
-      <button id="new-chat" class="ghost-btn">+ new chat</button>
-      <nav id="sessions"></nav>
+      <button id="new-chat" class="row-btn"><span>new chat</span><span class="kbd">⌘N</span></button>
+      <nav id="side-nav"></nav>
       <footer id="side-footer">
-        <div class="footer-row">
-          <button class="nav-btn" data-view="memory">memory</button>
-          <button class="nav-btn" data-view="receipts">receipts</button>
-        </div>
+        <button class="row-btn" data-view="memory"><span>memory</span></button>
+        <button class="row-btn" data-view="receipts"><span>receipts</span></button>
         <select id="skin-select" title="skin"></select>
         <div id="conn" class="conn">connecting…</div>
       </footer>
@@ -31,7 +30,6 @@
     <main id="main">
       <header id="main-head">
         <div id="head-title">—</div>
-        <div id="head-chips"></div>
       </header>
       <section id="view"></section>
       <div id="composer">
@@ -41,7 +39,7 @@
             <option value="chat">chat</option>
             <option value="dev">dev</option>
           </select>
-          <textarea id="input" rows="2" placeholder="speak to the forge — @ to reference a project or session" spellcheck="false"></textarea>
+          <textarea id="input" rows="2" placeholder="speak to the forge — @ for projects and sessions" spellcheck="false"></textarea>
           <button id="send">send</button>
         </div>
         <div id="at-popup" class="hidden"></div>
@@ -51,7 +49,7 @@
 
   <div id="modal-backdrop" class="hidden">
     <div id="approval-modal">
-      <div class="modal-title">⚠ approval needed</div>
+      <div class="modal-title">APPROVAL NEEDED</div>
       <div id="approval-tool" class="modal-tool"></div>
       <pre id="approval-summary"></pre>
       <div class="modal-actions">
