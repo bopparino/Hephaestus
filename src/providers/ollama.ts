@@ -158,7 +158,13 @@ export class OllamaAdapter implements ProviderAdapter {
         }
       }
     }
-    if (!sawText) throw new ProviderError('ollama: model returned empty content', 'server');
+    // Plain generation must produce text — empty is a provider failure.
+    // In a tool loop, an empty follow-up round is a legitimate stop
+    // (models sometimes go quiet after digesting tool results); the
+    // caller decides what to do with it.
+    if (!sawText && !opts?.tools?.length) {
+      throw new ProviderError('ollama: model returned empty content', 'server');
+    }
     yield { type: 'done' };
   }
 }

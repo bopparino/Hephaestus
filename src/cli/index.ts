@@ -374,6 +374,55 @@ function stopDaemon(): void {
   }
 }
 
+/** The only destructive verbs in the system — both demand their name typed
+ *  back. Everything else in Hephaestus is soft-delete by directive #4. */
+async function confirmWord(word: string, warning: string, rest: string[]): Promise<boolean> {
+  if (rest.includes('--yes')) return true;
+  if (!process.stdin.isTTY) {
+    console.error(`refusing without a terminal — rerun with --yes if you mean it`);
+    return false;
+  }
+  console.log(warning);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = await new Promise<string>(res => rl.question(`type "${word}" to proceed: `, res));
+  rl.close();
+  return answer.trim() === word;
+}
+
+async function purge(rest: string[]): Promise<void> {
+  const ok = await confirmWord('purge',
+    'This erases the brain: every session, memory, receipt, job, grant, and\n' +
+    'project registration. Files inside your project folders are NOT touched.\n' +
+    'Config, secrets, and skills survive. The next boot starts blank.', rest);
+  if (!ok) { console.log('nothing purged'); return; }
+  stopDaemon();
+  await new Promise(r => setTimeout(r, 400));
+  const { rmSync } = await import('node:fs');
+  for (const suffix of ['', '-wal', '-shm']) {
+    rmSync(paths.db + suffix, { force: true });
+  }
+  console.log('purged — the next `heph start` wakes a blank workshop');
+}
+
+async function uninstall(rest: string[]): Promise<void> {
+  const ok = await confirmWord('uninstall',
+    'This removes Hephaestus entirely: the daemon, the brain, config,\n' +
+    'secrets, skills, skins — all of ~/.hephaestus — plus the heph command.\n' +
+    'Files inside your project folders are NOT touched.', rest);
+  if (!ok) { console.log('nothing removed'); return; }
+  stopDaemon();
+  await new Promise(r => setTimeout(r, 400));
+  const { rmSync, existsSync: exists } = await import('node:fs');
+  const { execSync } = await import('node:child_process');
+  const { join: joinPath } = await import('node:path');
+  const { homedir } = await import('node:os');
+  try { execSync('npm rm -g @bopparino/hephaestus', { stdio: 'ignore' }); } catch { /* not npm-installed */ }
+  const shim = joinPath(homedir(), '.local', 'bin', 'heph');
+  if (exists(shim)) rmSync(shim, { force: true });
+  rmSync(paths.home, { recursive: true, force: true });
+  console.log('hephaestus removed. the forge is cold — thank you for the work.');
+}
+
 // ---- main -------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -393,6 +442,12 @@ async function main(): Promise<void> {
       stopDaemon();
       await new Promise(r => setTimeout(r, 600));
       await startDaemon();
+      break;
+    case 'purge':
+      await purge(rest);
+      break;
+    case 'uninstall':
+      await uninstall(rest);
       break;
     case 'chat': {
       let project: string | undefined;

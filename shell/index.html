@@ -102,6 +102,24 @@
         <button data-decision="deny" class="deny">Deny</button>
       </div>
     </div>
+    <div id="project-modal" class="hidden">
+      <div class="modal__title modal__title--calm">NEW PROJECT</div>
+      <div class="set-row"><label>Name</label><input id="pm-name" placeholder="kebab-case, e.g. forge-site" autocomplete="off"></div>
+      <div class="set-row" style="align-items:flex-start"><label style="padding-top:8px">Folder</label>
+        <div style="flex:1;min-width:0">
+          <div id="pm-path" class="pm-path"></div>
+          <div id="pm-dirs" class="dirlist"></div>
+          <div class="keyfield" style="margin-top:8px">
+            <input id="pm-newdir" placeholder="new folder name (optional)" autocomplete="off">
+            <button id="pm-mkdir">Create folder</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal__actions">
+        <button id="pm-cancel">Cancel</button>
+        <button id="pm-create" class="primary">Create project</button>
+      </div>
+    </div>
     <div id="settings-modal" class="hidden">
       <div class="modal__title modal__title--calm">SETTINGS</div>
       <div id="settings-body"></div>
