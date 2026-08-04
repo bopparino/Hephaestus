@@ -443,6 +443,28 @@ async function main(): Promise<void> {
       await new Promise(r => setTimeout(r, 600));
       await startDaemon();
       break;
+    case 'share': {
+      // Tailscale front door: tailnet-only, MagicDNS, TLS — the daemon
+      // itself never leaves loopback. `heph share off` closes it.
+      const { execSync } = await import('node:child_process');
+      const run = (c: string) => execSync(c, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      try { run('tailscale version'); } catch {
+        throw new Error('tailscale CLI not found — install Tailscale (or add it to PATH) first');
+      }
+      if (rest[0] === 'off') {
+        run('tailscale serve --https=443 off');
+        console.log('share closed — the workshop is loopback-only again');
+        break;
+      }
+      run('tailscale serve --bg --https=443 http://127.0.0.1:7715');
+      const status = JSON.parse(run('tailscale status --json')) as { Self?: { DNSName?: string } };
+      const dns = (status.Self?.DNSName ?? '').replace(/\.$/, '');
+      const shareToken = loadToken();
+      console.log('the workshop is on your tailnet (yours alone — Tailscale auth + daemon token):');
+      console.log(`  https://${dns}/#${shareToken}`);
+      console.log('close it anytime: heph share off');
+      break;
+    }
     case 'purge':
       await purge(rest);
       break;

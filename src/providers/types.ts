@@ -30,6 +30,7 @@ export interface ToolSpec {
 
 export type StreamEvent =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string } // reasoning stream — chrome, never persisted
   | { type: 'tool_call'; call: ToolCall }
   | { type: 'usage'; input?: number; output?: number }
   | { type: 'done' };

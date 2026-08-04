@@ -59,9 +59,32 @@ export class OllamaAdapter implements ProviderAdapter {
     return ctx;
   }
 
+  /** Model capability probe, cached — thinking only goes to models that
+   *  declare it (/api/show), and only when the caller didn't opt out. */
+  private thinkingCache = new Map<string, boolean>();
+  private async supportsThinking(model: string): Promise<boolean> {
+    const cached = this.thinkingCache.get(model);
+    if (cached !== undefined) return cached;
+    let supports = false;
+    try {
+      const res = await fetch(`${this.url}/api/show`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      });
+      if (res.ok) {
+        const info = await res.json() as { capabilities?: string[] };
+        supports = info.capabilities?.includes('thinking') ?? false;
+      }
+    } catch { /* unreachable — assume no */ }
+    this.thinkingCache.set(model, supports);
+    return supports;
+  }
+
   async *chat(model: string, messages: ChatMessage[], opts: ChatOptions = {}): AsyncGenerator<StreamEvent> {
     const resolved = await this.resolveModel(model);
     const numCtx = await this.numCtx(resolved);
+    const think = opts.think !== false && await this.supportsThinking(resolved);
 
     const wireMessages = messages.map(m => {
       if (m.role === 'tool') return { role: 'tool', content: m.content, tool_name: m.toolName };
@@ -91,7 +114,7 @@ export class OllamaAdapter implements ProviderAdapter {
             messages: wireMessages,
             stream: true,
             keep_alive: '30m',
-            ...(opts.think === false ? { think: false } : {}),
+            ...(think ? { think: true } : opts.think === false ? { think: false } : {}),
             ...(opts.tools?.length
               ? { tools: opts.tools.map(t => ({ type: 'function', function: t })) }
               : {}),
@@ -137,6 +160,8 @@ export class OllamaAdapter implements ProviderAdapter {
           continue;
         }
         if (j.error) throw new ProviderError(`ollama: ${j.error}`, 'server');
+        const thinkingDelta: string = j.message?.thinking ?? '';
+        if (thinkingDelta) yield { type: 'thinking', text: thinkingDelta };
         const delta: string = j.message?.content ?? '';
         if (delta) {
           sawText = true;

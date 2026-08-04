@@ -29,9 +29,26 @@ function md(src) {
   const out = [];
   let list = null;
   let para = [];
+  let tableBuf = [];
   const flushPara = () => { if (para.length) { out.push(`<p>${mdInline(para.join('\n'))}</p>`); para = []; } };
   const flushList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  const cells = row => row.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  const flushTable = () => {
+    if (!tableBuf.length) return;
+    // a real table needs a header + |---| separator; otherwise it's prose
+    if (tableBuf.length >= 2 && /^\|?[\s:|-]+\|?$/.test(tableBuf[1])) {
+      const head = cells(tableBuf[0]).map(c => `<th>${mdInline(c)}</th>`).join('');
+      const body = tableBuf.slice(2).map(r =>
+        `<tr>${cells(r).map(c => `<td>${mdInline(c)}</td>`).join('')}</tr>`).join('');
+      out.push(`<div class="md-tablewrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`);
+    } else {
+      for (const raw of tableBuf) out.push(`<p>${mdInline(raw)}</p>`);
+    }
+    tableBuf = [];
+  };
   for (const line of s.split('\n')) {
+    if (/^\s*\|.*\|\s*$/.test(line)) { flushPara(); flushList(); tableBuf.push(line.trim()); continue; }
+    flushTable();
     const fence = line.match(/^\u0000(\d+)\u0000\s*$/);
     if (fence) { flushPara(); flushList(); out.push(fences[Number(fence[1])]); continue; }
     const h = line.match(/^(#{1,3})\s+(.*)$/);
@@ -50,7 +67,7 @@ function md(src) {
     if (!line.trim()) { flushPara(); flushList(); continue; }
     para.push(line);
   }
-  flushPara(); flushList();
+  flushPara(); flushList(); flushTable();
   return out.join('');
 }
 
@@ -75,6 +92,7 @@ const state = {
   inflight: new Set(),      // sessionIds with a run in progress
   streams: new Map(),       // sessionId -> buffered text (replay on return)
   awaitingSession: false,   // a send whose new session id hasn't landed yet
+  lastDone: null,           // {id, at} — guard against self-refresh wiping chrome
   meter: { calls: 0, tokens: 0 },
   touched: new Map(),       // file -> 'written' | 'read' (this thread, live)
   learned: [],              // facts captured in this session (from memory.list)
@@ -86,7 +104,9 @@ let ws = null, nextId = 1;
 const pending = new Map();
 
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws?token=${token}`);
+  // wss under https — tailscale serve (heph share) fronts us with TLS
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
   ws.onopen = async () => {
     setConn('linked', 'ok');
     await loadSkins();
@@ -145,15 +165,30 @@ function onEvent(event, p) {
     // a tool table may have closed the previous prose turn mid-reply —
     // text after tools opens a fresh HEPH turn instead of vanishing
     if (!liveBody) startLive();
-    liveBody.querySelector('.dots')?.remove();
+    liveBody.querySelector('.think')?.classList.remove('streaming');
+    const prose = liveProse();
+    prose.querySelector('.dots')?.remove();
     const tok = document.createElement('span');
     tok.className = 'tok'; tok.textContent = p.text;
-    liveBody.appendChild(tok);
+    prose.appendChild(tok);
     $('view').scrollTop = $('view').scrollHeight;
+  } else if (event === 'chat.thinking') {
+    // reasoning may arrive before any prose — adopt the session here too
+    if (state.awaitingSession && state.sessionId == null && p.sessionId) {
+      state.sessionId = p.sessionId;
+      state.awaitingSession = false;
+    }
+    if (p.sessionId && p.sessionId !== state.sessionId) return; // background thought — let it go
+    if (!liveBody) startLive();
+    const body = ensureThink();
+    body.appendChild(document.createTextNode(p.text));
+    const think = liveBody.querySelector('.think');
+    if (think?.classList.contains('open')) body.scrollTop = body.scrollHeight;
   } else if (event === 'chat.done') {
     if (p.sessionId) {
       state.inflight.delete(p.sessionId);
       state.streams.delete(p.sessionId);
+      state.lastDone = { id: p.sessionId, at: Date.now() };
     }
     if (p.sessionId === state.sessionId) {
       const usage = p.usage ?? {};
@@ -188,8 +223,12 @@ function onEvent(event, p) {
     applySkin(p.skin);
   } else if (event === 'session.updated') {
     // another surface (Telegram, a job, another window) moved a session —
-    // refresh what we're looking at, or just the rail
-    if (state.view === 'chat' && state.sessionId === p.sessionId && !state.inflight.has(p.sessionId) && !state.awaitingSession) {
+    // refresh what we're looking at, or just the rail. NOT for exchanges
+    // this window just finished itself: re-opening would wipe transient
+    // chrome (the thinking block) and double-render.
+    const justFinishedHere = state.lastDone?.id === p.sessionId && Date.now() - state.lastDone.at < 3000;
+    if (state.view === 'chat' && state.sessionId === p.sessionId
+        && !state.inflight.has(p.sessionId) && !state.awaitingSession && !justFinishedHere) {
       openSession(p.sessionId);
     } else {
       refreshSessions();
@@ -523,9 +562,8 @@ function newChat() {
   setCrumb('new chat', null);
   $('view').innerHTML = `
     <div class="hero">
-      <div class="hero__label">NEW CHAT</div>
-      <div class="hero__h">What are we working on?</div>
-      <div class="hero__sub">State the task. Scope it with <span class="mono">@</span> — a project, or a past chat for context.</div>
+      <div class="hero__brand">HEPHAESTUS</div>
+      <div class="hero__sub">Ask a question, point me at a project, or state the work.<br>I can read, build, search, and remember.</div>
     </div>
     <div class="column recent">
       <div class="recent__label">PICK UP WHERE YOU LEFT OFF</div>
@@ -560,10 +598,11 @@ async function openSession(id) {
     startLive();
     const buffered = state.streams.get(id);
     if (buffered) {
-      liveBody.querySelector('.dots')?.remove();
+      const prose = liveProse();
+      prose.querySelector('.dots')?.remove();
       const span = document.createElement('span');
       span.textContent = buffered;
-      liveBody.appendChild(span);
+      prose.appendChild(span);
     }
   }
   view.scrollTop = view.scrollHeight;
@@ -710,7 +749,34 @@ function appendToolRow(p) {
 
 function startLive() {
   liveBody = turnEl('HEPH', true);
-  liveBody.appendChild(typingDots());
+  const prose = document.createElement('div');
+  prose.className = 'live-prose';
+  prose.appendChild(typingDots());
+  liveBody.appendChild(prose);
+}
+
+/** The streaming text target — prose only, never the thinking block. */
+function liveProse() {
+  return liveBody?.querySelector('.live-prose') ?? liveBody;
+}
+
+/** The collapsible reasoning block — created on first thinking delta,
+ *  clickable to expand, scrollable with a bottom gradient. Chrome only:
+ *  never persisted, gone on transcript reload. */
+function ensureThink() {
+  let think = liveBody?.querySelector('.think');
+  if (think) return think.querySelector('.think__body');
+  think = document.createElement('div');
+  think.className = 'think streaming';
+  think.innerHTML = `
+    <button class="think__head"><span>Thinking</span><span class="think__chev">▸</span></button>
+    <div class="think__body"></div>`;
+  think.querySelector('.think__head').onclick = () => {
+    think.classList.toggle('open');
+    think.querySelector('.think__chev').textContent = think.classList.contains('open') ? '▾' : '▸';
+  };
+  liveBody.prepend(think);
+  return think.querySelector('.think__body');
 }
 
 // ---- composer -------------------------------------------------------------
@@ -744,14 +810,17 @@ function renderSendState() {
     (!$('input').value.trim() && !state.attachments.length && !state.fileTexts.length);
 }
 
-/** Close out the live turn: dots off, markdown on. Safe to call twice. */
+/** Close out the live turn: dots off, markdown on (prose only — the
+ *  thinking block stays as it is). Safe to call twice. */
 function finalizeLive() {
   if (!liveBody) return;
-  liveBody.querySelector('.dots')?.remove();
-  if (liveBody.textContent.trim() && !liveBody.classList.contains('md')) {
-    const raw = liveBody.textContent;
-    liveBody.classList.add('md');
-    liveBody.innerHTML = md(raw);
+  liveBody.querySelector('.think')?.classList.remove('streaming');
+  const prose = liveProse();
+  prose.querySelector('.dots')?.remove();
+  if (prose.textContent.trim() && !prose.classList.contains('md')) {
+    const raw = prose.textContent;
+    prose.classList.add('md');
+    prose.innerHTML = md(raw);
   }
   liveBody = null; liveTools = null;
 }
@@ -803,8 +872,9 @@ async function send() {
     // chat.done already finalized the view if we were watching
   } catch (err) {
     if (state.sessionId === resultSession && liveBody) {
-      liveBody.querySelector('.dots')?.remove();
-      liveBody.textContent += `[${err.message}]`;
+      const prose = liveProse();
+      prose.querySelector('.dots')?.remove();
+      prose.appendChild(document.createTextNode(`[${err.message}]`));
     }
   } finally {
     state.awaitingSession = false;
@@ -1027,6 +1097,22 @@ async function buildConnectors(container, rerender) {
         ? mcp.servers.map(s => `<code>${esc(s.server)}</code> — ${s.tools} tools`).join(' · ')
         : 'External tool servers. Add one under <code>[mcp.servers.&lt;name&gt;]</code> in <code>~/.hephaestus/config.toml</code> (command + args), then restart. Every call still passes the permission broker.');
 
+  // The channel catalog — honest statuses only. One channel is live;
+  // iMessage works through the imported skill; the rest are patterns
+  // sitting in the Hermes source, buildable on request.
+  let hasImessage = false;
+  try { hasImessage = (await rpc('skills.list')).some(s => s.name === 'imessage'); } catch { /* fine */ }
+  container.innerHTML += `
+    <div class="set-section" style="margin-top:8px">CHANNELS</div>` +
+    block('iMessage', hasImessage ? 'via skill' : 'skill not imported', hasImessage,
+      hasImessage
+        ? 'The <code>imessage</code> skill lets the automaton read and send iMessages through the shell gate — ask it to message someone and approve the command. A native always-on channel (BlueBubbles pattern) is on the roadmap.'
+        : 'Import the Hermes skills library (Settings → Skills) to enable agent-driven iMessage.') +
+    block('Remote access', location.protocol === 'https:' ? 'you are on it' : 'local', true,
+      'Reach this UI from any device on your tailnet: <code>heph share</code> proxies through Tailscale (MagicDNS + TLS, tailnet-only). <code>heph share off</code> closes it.') +
+    block('More channels', 'roadmap', false,
+      'Discord · Slack · WhatsApp · Signal · Email · SMS · Matrix — the adapter patterns live in the Hermes install we harvest from. Say the word and one lands.');
+
   container.querySelectorAll('.keyfield[data-secret]').forEach(field => {
     const noteEl = field.parentElement.querySelector('.keyfield__note');
     field.querySelector('button').onclick = () =>
@@ -1138,7 +1224,7 @@ async function showSettings(tab = settingsTab) {
   view.innerHTML = `
     <div class="settings-pane">
       <nav class="set-nav">
-        ${[['general', 'General'], ['models', 'Model lanes'], ['connectors', 'Connectors'], ['receipts', 'Receipts']]
+        ${[['general', 'General'], ['models', 'Model lanes'], ['skills', 'Skills'], ['connectors', 'Connectors'], ['receipts', 'Receipts']]
           .map(([key, label]) => `<button data-tab="${key}"${key === tab ? ' class="active"' : ''}>${label}</button>`).join('')}
       </nav>
       <div class="set-content" id="set-content"></div>
@@ -1196,6 +1282,36 @@ async function showSettings(tab = settingsTab) {
       await rpc('config.set', { models });
       await loadModels();
       showSettings('models');
+    };
+  } else if (tab === 'skills') {
+    const skills = await rpc('skills.list');
+    content.innerHTML = `
+      <div class="set-section">SKILLS — ${skills.length} SAVED PROCEDURES</div>
+      <div class="set-row" style="padding-bottom:10px"><input id="skill-filter" placeholder="filter skills…" style="flex:1"></div>
+      <div id="skill-rows"></div>
+      <div class="set-section">IMPORT</div>
+      <div class="keyfield">
+        <input id="skill-import-dir" placeholder="directory to sweep for SKILL.md folders (e.g. ~/.hermes/skills)">
+        <button id="skill-import-btn">Import</button>
+      </div>
+      <div class="keyfield__note" id="skill-import-note"></div>`;
+    const rows = $('skill-rows');
+    const renderSkills = filter => {
+      const q = (filter ?? '').toLowerCase();
+      rows.innerHTML = skills
+        .filter(s => !q || s.name.includes(q) || s.description.toLowerCase().includes(q))
+        .map(s => `<div class="memo"><div class="memo__text"><span style="font-family:var(--font-mono);font-size:12px">${esc(s.name)}</span></div>
+          <div class="memo__prov">${esc(s.description.slice(0, 110))}</div></div>`)
+        .join('') || '<div class="insp__note">no matches</div>';
+    };
+    renderSkills();
+    $('skill-filter').addEventListener('input', e => renderSkills(e.target.value));
+    $('skill-import-btn').onclick = async () => {
+      try {
+        const result = await rpc('skills.import', { dir: $('skill-import-dir').value.trim() });
+        $('skill-import-note').textContent = `imported ${result.imported} (${result.skipped} already present)`;
+        setTimeout(() => showSettings('skills'), 1200);
+      } catch (err) { $('skill-import-note').textContent = err.message; }
     };
   } else if (tab === 'connectors') {
     content.innerHTML = '<div class="set-section">CONNECTORS</div><div id="connector-list"></div>';

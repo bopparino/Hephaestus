@@ -44,6 +44,8 @@ When the task is done, summarize what changed and how you verified it.`;
 export interface AgentEvents {
   onDelta(text: string): void;
   onTool(name: string, summary: string, ms: number, ok: boolean, result?: string, detail?: string): void;
+  /** reasoning stream — chrome for the shell, never persisted */
+  onThinking?(text: string): void;
   ask: ((req: AskRequest) => void) | null;
   /** broadcast hook for background-delegation completions */
   notify?(event: string, params: Record<string, unknown>): void;
@@ -108,6 +110,8 @@ export async function runAgent(
       if (ev.type === 'text') {
         text += ev.text;
         events.onDelta(ev.text);
+      } else if (ev.type === 'thinking') {
+        events.onThinking?.(ev.text);
       } else if (ev.type === 'tool_call') {
         calls.push(ev.call);
       }

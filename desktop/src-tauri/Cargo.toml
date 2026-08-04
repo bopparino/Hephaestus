@@ -1,6 +1,6 @@
 [package]
 name = "hephaestus-desktop"
-version = "0.3.0"
+version = "0.9.0"
 description = "Hephaestus — a local-first AI workspace with a real memory"
 authors = ["Austin Cantrell"]
 license = "MIT"

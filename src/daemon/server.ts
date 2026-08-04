@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, cpSync } from 'node:fs';
 import { paths, getSecret } from './paths.js';
 import { join, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,7 +31,7 @@ import { ProviderError } from '../providers/types.js';
 import type { ChatMessage } from '../providers/types.js';
 import { PROTOCOL_VERSION, type ResolvedSkin, type RpcRequest, type Usage } from '../shared/protocol.js';
 
-const VERSION = '0.0.1';
+const VERSION = '0.9.0-beta';
 
 const IDENTITY =
   'You are Hephaestus, a local-first AI workspace. Be direct, concrete, and useful. ' +
@@ -316,6 +316,35 @@ export class Hephd {
       case 'mcp.status':
         return { servers: mcpStatus(), web: webAvailable() };
 
+      case 'skills.import': {
+        // The Settings-pane twin of `heph skills import` — sweep SKILL.md
+        // directories, copy whole folders, never overwrite.
+        const source = String(p.dir ?? '').replace(/^~(?=\/)/, paths.home.replace(/\/\.hephaestus$/, ''));
+        if (!source || !existsSync(source)) throw new Error('directory not found');
+        const found: string[] = [];
+        const walk = (dir: string, depth: number): void => {
+          if (depth > 3) return;
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name.startsWith('.') || !entry.isDirectory()) continue;
+            const full = join(dir, entry.name);
+            if (existsSync(join(full, 'SKILL.md'))) found.push(full);
+            else walk(full, depth + 1);
+          }
+        };
+        walk(source, 0);
+        const dest = join(paths.home, 'skills');
+        let imported = 0, skipped = 0;
+        for (const skillDir of found) {
+          const name = skillDir.split('/').pop()!.toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+          const target = join(dest, name);
+          if (existsSync(target)) { skipped++; continue; }
+          cpSync(skillDir, target, { recursive: true });
+          imported++;
+        }
+        receipt('skills_import', { source, imported, skipped });
+        return { imported, skipped };
+      }
+
       case 'setup.status': {
         const row = getDb().prepare("SELECT value FROM meta WHERE key = 'setup_done'").get();
         return { done: !!row };
@@ -521,6 +550,7 @@ export class Hephd {
             { sessionId, root, task: p.task as string },
             {
               onDelta: text => this.send(ws, { event: 'agent.delta', params: { reqId: req.id, sessionId, text } }),
+              onThinking: text => this.send(ws, { event: 'chat.thinking', params: { reqId: req.id, sessionId, text } }),
               onTool: (name, summary, ms, ok, result, detail) =>
                 this.send(ws, { event: 'agent.tool', params: { reqId: req.id, sessionId, name, summary, ms, ok, result, detail } }),
               ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq, sessionId } }),
@@ -663,6 +693,7 @@ export class Hephd {
       // same event the dev lane uses — the shell's tool table just works
       onTool: (name, summary, ms, ok, result, detail) =>
         this.send(ws, { event: 'agent.tool', params: { reqId, sessionId, name, summary, ms, ok, result, detail } }),
+      onThinking: text => this.send(ws, { event: 'chat.thinking', params: { reqId, sessionId, text } }),
       ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId, ...askReq, sessionId } }),
       plan,
       refSessions,
@@ -681,6 +712,8 @@ export class Hephd {
       onDelta?: (text: string) => void;
       onDone?: (usage: Usage) => void;
       onTool?: (name: string, summary: string, ms: number, ok: boolean, result?: string, detail?: string) => void;
+      /** reasoning stream — chrome, never persisted */
+      onThinking?: (text: string) => void;
       deliver?: (full: string) => Promise<boolean>;
       /** approval channel — absent means headless (grants-only beyond reads) */
       ask?: Asker | null;
@@ -787,6 +820,8 @@ export class Hephd {
         if (ev.type === 'text') {
           segment += ev.text;
           sink.onDelta?.(ev.text);
+        } else if (ev.type === 'thinking') {
+          sink.onThinking?.(ev.text);
         } else if (ev.type === 'tool_call') {
           calls.push(ev.call);
         } else if (ev.type === 'usage') {
