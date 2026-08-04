@@ -38,4 +38,20 @@ export class Providers {
   bindings(): Record<ModelRole, string> {
     return { ...this.cfg.models };
   }
+
+  /** Installed-model catalog for the shell's switcher. */
+  async listInstalled(): Promise<{ provider: string; model: string; spec: string }[]> {
+    const out: { provider: string; model: string; spec: string }[] = [];
+    try {
+      for (const name of (await this.ollama.listModels()).filter(n => !/embed/i.test(n))) {
+        out.push({ provider: 'ollama', model: name, spec: `ollama/${name}` });
+      }
+    } catch { /* ollama down — list what we can */ }
+    out.push({
+      provider: 'anthropic',
+      model: this.cfg.providers.anthropic.modelDefault,
+      spec: `anthropic/${this.cfg.providers.anthropic.modelDefault}`,
+    });
+    return out;
+  }
 }

@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSy
 import { dirname, join, resolve, sep, relative } from 'node:path';
 import type { ToolSpec } from '../providers/types.js';
 import { addFact } from './memory.js';
+import { receipt } from './db.js';
 import { listSkills, readSkill, saveSkill } from './skills-lib.js';
 
 const execFileAsync = promisify(execFile);
@@ -81,6 +82,11 @@ export const TOOLS: Record<string, BuiltinTool> = {
       mkdirSync(dirname(abs), { recursive: true });
       const existed = existsSync(abs);
       writeFileSync(abs, String(args.content));
+      // Artifact receipt — the shell's Artifacts view is a query over these.
+      receipt('artifact', {
+        path: abs, rel: relative(ctx.root, abs), root: ctx.root,
+        bytes: String(args.content).length, updated: existed,
+      }, ctx.sessionId);
       return `${existed ? 'overwrote' : 'created'} ${relative(ctx.root, abs)} (${String(args.content).length} chars)`;
     },
   },

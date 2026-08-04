@@ -16,6 +16,8 @@ export interface ChatMessage {
   /** tool turns: which call this result answers */
   toolCallId?: string;
   toolName?: string;
+  /** user turns: attached images, transient — memory persists text notes */
+  images?: { mime: string; data: string }[];
 }
 
 /** Model-facing tool description — JSON Schema parameters, provider-mapped

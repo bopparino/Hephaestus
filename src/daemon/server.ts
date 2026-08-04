@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import type { Config } from './config.js';
+import { saveConfig, type Config } from './config.js';
 import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { loadSkins } from './skins.js';
 import { initEmbeddings, embed } from './embeddings.js';
@@ -155,8 +155,82 @@ export class Hephd {
 
       case 'session.list':
         return getDb()
-          .prepare('SELECT id, created_at, title, automaton, project FROM sessions ORDER BY id DESC LIMIT 50')
+          .prepare('SELECT id, created_at, title, automaton, project FROM sessions WHERE archived = 0 ORDER BY id DESC LIMIT 50')
           .all();
+
+      case 'session.archive': {
+        if (typeof p.id !== 'number') throw new Error('session.archive needs id');
+        getDb().prepare('UPDATE sessions SET archived = 1 WHERE id = ?').run(p.id);
+        receipt('session_archive', { id: p.id });
+        return { ok: true };
+      }
+
+      case 'project.archive': {
+        if (typeof p.name !== 'string') throw new Error('project.archive needs name');
+        getDb().prepare('UPDATE projects SET archived = 1 WHERE name = ?').run(p.name);
+        receipt('project_archive', { name: p.name });
+        return { ok: true };
+      }
+
+      case 'models.list':
+        return { models: await this.providers.listInstalled(), bindings: this.providers.bindings() };
+
+      case 'config.get':
+        return {
+          models: this.cfg.models,
+          user: this.cfg.user,
+          memory: this.cfg.memory,
+          connections: {
+            ollamaUrl: this.cfg.providers.ollama.url,
+            anthropicKey: !!process.env.ANTHROPIC_API_KEY || undefined,
+            telegramOwner: this.cfg.channels.telegram.ownerId,
+          },
+        };
+
+      case 'config.set': {
+        // Curated surface — the settings panel edits these, nothing else.
+        const models = p.models as Partial<Config['models']> | undefined;
+        for (const role of ['chat', 'agent', 'utility', 'embed'] as const) {
+          const spec = models?.[role];
+          if (typeof spec === 'string' && /^(ollama|anthropic)\//.test(spec)) this.cfg.models[role] = spec;
+        }
+        const user = p.user as Partial<Config['user']> | undefined;
+        if (typeof user?.name === 'string' && user.name.trim()) this.cfg.user.name = user.name.trim();
+        const memory = p.memory as Partial<Config['memory']> | undefined;
+        if (typeof memory?.captureEvery === 'number' && memory.captureEvery >= 2) this.cfg.memory.captureEvery = Math.floor(memory.captureEvery);
+        if (typeof memory?.coreBudget === 'number' && memory.coreBudget >= 500) this.cfg.memory.coreBudget = Math.floor(memory.coreBudget);
+        saveConfig(this.cfg);
+        this.providers = new Providers(this.cfg); // rebind lanes immediately
+        receipt('config_set', { models: this.cfg.models, user: this.cfg.user.name });
+        return { ok: true, models: this.cfg.models };
+      }
+
+      case 'artifacts.list': {
+        const rows = getDb()
+          .prepare("SELECT id, created_at, session_id, detail FROM receipts WHERE kind = 'artifact' ORDER BY id DESC LIMIT 100")
+          .all() as { id: number; created_at: string; session_id: number | null; detail: string }[];
+        const seen = new Set<string>();
+        const artifacts = [];
+        for (const row of rows) {
+          try {
+            const detail = JSON.parse(row.detail) as { path: string; rel: string; root: string; bytes: number };
+            if (seen.has(detail.path)) continue; // newest write per file wins
+            seen.add(detail.path);
+            artifacts.push({ ...detail, sessionId: row.session_id, at: row.created_at });
+          } catch { /* malformed old row */ }
+        }
+        return artifacts;
+      }
+
+      case 'artifacts.read': {
+        if (typeof p.path !== 'string') throw new Error('artifacts.read needs path');
+        // Only paths the agent actually wrote (receipted) are readable here.
+        const known = getDb()
+          .prepare("SELECT 1 FROM receipts WHERE kind = 'artifact' AND detail LIKE ? LIMIT 1")
+          .get(`%${JSON.stringify(p.path).slice(1, -1)}%`);
+        if (!known || !existsSync(p.path)) throw new Error('unknown artifact');
+        return { path: p.path, content: readFileSync(p.path, 'utf8').slice(0, 100_000) };
+      }
 
       case 'session.messages': {
         if (typeof p.sessionId !== 'number') throw new Error('session.messages needs sessionId');
@@ -184,8 +258,16 @@ export class Hephd {
         const refSessions = Array.isArray(p.refSessions)
           ? p.refSessions.filter((x): x is number => typeof x === 'number').slice(0, 2)
           : [];
+        // Attachments: images ride to the model this turn (transient — the
+        // GlasHaus photo rule: history and memory stay text-domain).
+        const images = Array.isArray(p.attachments)
+          ? (p.attachments as { mime?: string; data?: string; name?: string }[])
+              .filter(a => typeof a?.data === 'string' && /^image\//.test(String(a.mime)))
+              .slice(0, 4)
+              .map(a => ({ mime: String(a.mime), data: String(a.data), name: String(a.name ?? 'image') }))
+          : [];
         return this.enqueue(sessionId, () =>
-          this.exchange(ws, req.id, sessionId, p.text as string, refSessions));
+          this.exchange(ws, req.id, sessionId, p.text as string, refSessions, images));
       }
 
       case 'project.add': {
@@ -338,11 +420,15 @@ export class Hephd {
   }
 
   /** ws-client wrapper around runExchange — streaming IS delivery here. */
-  private exchange(ws: WebSocket, reqId: number, sessionId: number, text: string, refSessions: number[] = []) {
+  private exchange(
+    ws: WebSocket, reqId: number, sessionId: number, text: string,
+    refSessions: number[] = [], images: { mime: string; data: string; name: string }[] = [],
+  ) {
     return this.runExchange(sessionId, text, {
       onDelta: t => this.send(ws, { event: 'chat.delta', params: { reqId, text: t } }),
       onDone: usage => this.send(ws, { event: 'chat.done', params: { reqId, sessionId, usage } }),
       refSessions,
+      images,
     });
   }
 
@@ -359,6 +445,8 @@ export class Hephd {
       deliver?: (full: string) => Promise<boolean>;
       /** @-referenced sessions: their bookends ride the user band, fenced. */
       refSessions?: number[];
+      /** attached images — model sees them this turn; DB keeps a text note */
+      images?: { mime: string; data: string; name: string }[];
     },
   ) {
     // Tier-2 recall renders into the USER band, fenced — the system prompt
@@ -381,7 +469,10 @@ export class Hephd {
       recallBlock = recallBlock ? `${recallBlock}\n\n${refBlock}` : refBlock;
     }
 
-    saveMessage(sessionId, 'user', text);
+    const imageNote = sink.images?.length
+      ? `[attached: ${sink.images.map(i => i.name).join(', ')}]\n`
+      : '';
+    saveMessage(sessionId, 'user', imageNote + text);
     const history = getDb()
       .prepare("SELECT role, content FROM messages WHERE session_id = ? AND summarized = 0 ORDER BY id DESC LIMIT ?")
       .all(sessionId, this.cfg.memory.recentWindow)
@@ -389,6 +480,10 @@ export class Hephd {
     if (recallBlock && history.length) {
       const last = history[history.length - 1];
       history[history.length - 1] = { ...last, content: `${recallBlock}\n\n${last.content}` };
+    }
+    if (sink.images?.length && history.length) {
+      const last = history[history.length - 1];
+      history[history.length - 1] = { ...last, images: sink.images.map(i => ({ mime: i.mime, data: i.data })) };
     }
 
     const { adapter, model: boundModel } = this.providers.resolve('chat');

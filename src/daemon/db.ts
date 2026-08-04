@@ -113,6 +113,10 @@ const MIGRATIONS: string[] = [
     archived INTEGER NOT NULL DEFAULT 0
   );
   `,
+  // v5 — sessions archive like everything else: soft, reversible.
+  `
+  ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 let db: Database.Database | null = null;

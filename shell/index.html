@@ -20,35 +20,42 @@
       <button id="new-chat" class="row-btn"><span>new chat</span><span class="kbd">⌘N</span></button>
       <nav id="side-nav"></nav>
       <footer id="side-footer">
+        <button class="row-btn" data-view="artifacts"><span>artifacts</span></button>
         <button class="row-btn" data-view="memory"><span>memory</span></button>
         <button class="row-btn" data-view="receipts"><span>receipts</span></button>
+        <button class="row-btn" id="open-settings"><span>settings</span></button>
         <select id="skin-select" title="skin"></select>
-        <div id="conn" class="conn">connecting…</div>
+        <div id="conn" class="conn">linking…</div>
       </footer>
     </aside>
 
     <main id="main">
       <header id="main-head">
+        <button id="side-toggle" title="toggle sidebar">≡</button>
         <div id="head-title">—</div>
       </header>
       <section id="view"></section>
       <div id="composer">
         <div id="chips"></div>
         <div id="composer-row">
+          <button id="attach" title="attach images or files">+</button>
+          <textarea id="input" rows="2" placeholder="state the work — @ to scope it" spellcheck="false"></textarea>
+          <button id="model-btn" title="model"></button>
           <select id="automaton" title="automaton">
             <option value="chat">chat</option>
             <option value="dev">dev</option>
           </select>
-          <textarea id="input" rows="2" placeholder="speak to the forge — @ for projects and sessions" spellcheck="false"></textarea>
           <button id="send">send</button>
         </div>
         <div id="at-popup" class="hidden"></div>
+        <div id="model-popup" class="hidden"></div>
+        <input id="file-input" type="file" multiple accept="image/*,.txt,.md,.js,.ts,.py,.json,.yaml,.toml,.css,.html,.sh,.log" class="hidden">
       </div>
     </main>
   </div>
 
   <div id="modal-backdrop" class="hidden">
-    <div id="approval-modal">
+    <div id="approval-modal" class="hidden">
       <div class="modal-title">APPROVAL NEEDED</div>
       <div id="approval-tool" class="modal-tool"></div>
       <pre id="approval-summary"></pre>
@@ -57,6 +64,14 @@
         <button data-decision="allow-session">session</button>
         <button data-decision="allow-always">always</button>
         <button data-decision="deny" class="deny">deny</button>
+      </div>
+    </div>
+    <div id="settings-modal" class="hidden">
+      <div class="modal-title">SETTINGS</div>
+      <div id="settings-body"></div>
+      <div class="modal-actions">
+        <button id="settings-cancel">close</button>
+        <button id="settings-save" class="primary">save</button>
       </div>
     </div>
   </div>

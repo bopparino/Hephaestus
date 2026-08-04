@@ -66,6 +66,49 @@ skin_dark = "forge"
 skin_light = "daybreak"
 `;
 
+/** Regenerate config.toml from the live config. Settings-panel writes come
+ *  through here; the generated file keeps its guidance comments. */
+export function saveConfig(cfg: Config): void {
+  const toml = `# Hephaestus — ~/.hephaestus/config.toml
+# Model roles bind "provider/model". Providers: ollama, anthropic.
+# "ollama/auto" picks the first chat-capable model Ollama reports.
+
+[daemon]
+port = ${cfg.daemon.port}
+
+[models]
+chat = ${JSON.stringify(cfg.models.chat)}
+agent = ${JSON.stringify(cfg.models.agent)}
+utility = ${JSON.stringify(cfg.models.utility)}
+embed = ${JSON.stringify(cfg.models.embed)}
+
+[providers.ollama]
+url = ${JSON.stringify(cfg.providers.ollama.url)}
+
+[providers.anthropic]
+# API key comes from $ANTHROPIC_API_KEY or ~/.hephaestus/secrets — never here.
+model_default = ${JSON.stringify(cfg.providers.anthropic.modelDefault)}
+
+[ui]
+skin_dark = ${JSON.stringify(cfg.ui.skinDark)}
+skin_light = ${JSON.stringify(cfg.ui.skinLight)}
+
+[user]
+name = ${JSON.stringify(cfg.user.name)}
+${cfg.channels.telegram.ownerId ? `
+[channels.telegram]
+owner_id = ${JSON.stringify(cfg.channels.telegram.ownerId)}
+` : ''}
+[memory]
+capture_every = ${cfg.memory.captureEvery}
+recent_window = ${cfg.memory.recentWindow}
+fold_chunk = ${cfg.memory.foldChunk}
+core_budget = ${cfg.memory.coreBudget}
+compact_threshold = ${cfg.memory.compactThreshold}
+`;
+  writeFileSync(paths.config, toml);
+}
+
 /** First run writes the annotated default; after that the file is truth. */
 export function loadConfig(): Config {
   if (!existsSync(paths.config)) {

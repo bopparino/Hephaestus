@@ -37,6 +37,14 @@ export class AnthropicAdapter implements ProviderAdapter {
             ...m.toolCalls.map(c => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args })),
           ],
         });
+      } else if (m.role === 'user' && m.images?.length) {
+        turns.push({
+          role: 'user',
+          content: [
+            ...m.images.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mime, data: i.data } })),
+            { type: 'text', text: m.content },
+          ],
+        });
       } else {
         turns.push({ role: m.role, content: m.content });
       }

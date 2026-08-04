@@ -72,6 +72,9 @@ export class OllamaAdapter implements ProviderAdapter {
           tool_calls: m.toolCalls.map(c => ({ function: { name: c.name, arguments: c.args } })),
         };
       }
+      if (m.images?.length) {
+        return { role: m.role, content: m.content, images: m.images.map(i => i.data) };
+      }
       return { role: m.role, content: m.content };
     });
 
