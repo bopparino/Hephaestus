@@ -79,6 +79,18 @@ export class PermissionBroker {
     receipt('permission_grant', { tool, scope }, sessionId);
   }
 
+  /** Permission mode — the Claude Code trio. Set from config by the owner's
+   *  authenticated UI/CLI, never from env at runtime (the Hermes YOLO
+   *  lesson: injected content must not be able to escalate). */
+  private mode: 'ask' | 'auto' | 'bypass' = 'ask';
+
+  setMode(mode: 'ask' | 'auto' | 'bypass'): void {
+    if (mode !== this.mode) {
+      this.mode = mode;
+      receipt('permission_mode', { mode });
+    }
+  }
+
   /** The gate. Returns 'allow' | 'deny'; 'ask' resolves through the client. */
   async check(
     sessionId: number,
@@ -87,11 +99,14 @@ export class PermissionBroker {
     args: Record<string, unknown>,
     ask: Asker | null,
   ): Promise<{ allowed: boolean; via: string }> {
+    // The hardline list answers to no mode — first, always.
     const hardline = this.hardlineCheck(tool, args);
     if (hardline) return { allowed: false, via: `hardline:${hardline}` };
 
     if (risk === 'read') return { allowed: true, via: 'risk:read' };
     if (YOLO_FROZEN) return { allowed: true, via: 'yolo-frozen-at-boot' };
+    if (this.mode === 'bypass') return { allowed: true, via: 'mode:bypass' };
+    if (this.mode === 'auto' && risk === 'write') return { allowed: true, via: 'mode:auto' };
     if (this.standingGrant(sessionId, tool)) return { allowed: true, via: 'grant' };
     if (!ask) return { allowed: false, via: 'headless-deny' };
 

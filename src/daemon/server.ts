@@ -70,6 +70,7 @@ export class Hephd {
   constructor(private cfg: Config, private token: string) {
     this.skins = loadSkins();
     this.providers = new Providers(cfg);
+    this.broker.setMode(cfg.permissions.mode);
     initEmbeddings(cfg);
     // MCP servers connect in the background; their tools appear in the
     // agent's toolbox as each one comes up. A failed server is a receipt,
@@ -95,6 +96,7 @@ export class Hephd {
       '.svg': 'image/svg+xml',
       '.woff': 'font/woff',
       '.woff2': 'font/woff2',
+      '.png': 'image/png',
     };
     this.http = createServer((req, res) => {
       if (req.url === '/healthz') {
@@ -218,6 +220,7 @@ export class Hephd {
           user: this.cfg.user,
           memory: this.cfg.memory,
           voice: this.cfg.voice,
+          permissions: this.cfg.permissions,
           connections: {
             ollamaUrl: this.cfg.providers.ollama.url,
             anthropicKey: !!getSecret('ANTHROPIC_API_KEY') || undefined,
@@ -246,6 +249,11 @@ export class Hephd {
         const channels = p.channels as { telegramOwner?: unknown } | undefined;
         if (typeof channels?.telegramOwner === 'string') {
           this.cfg.channels.telegram.ownerId = channels.telegramOwner.trim() || null;
+        }
+        const perms = p.permissions as { mode?: unknown } | undefined;
+        if (perms?.mode === 'ask' || perms?.mode === 'auto' || perms?.mode === 'bypass') {
+          this.cfg.permissions.mode = perms.mode;
+          this.broker.setMode(perms.mode);
         }
         saveConfig(this.cfg);
         this.providers = new Providers(this.cfg); // rebind lanes immediately
@@ -469,8 +477,14 @@ export class Hephd {
         const projectRoot = project
           ? (getDb().prepare('SELECT root FROM projects WHERE name = ?').get(project) as { root: string }).root
           : null;
-        const root = typeof p.root === 'string' ? p.root : projectRoot;
-        if (!root) throw new Error('agent.run needs root (or a registered project)');
+        // No project, no root? The workbench: a standing scratch root so
+        // dev mode works from a bare chat. Real projects still scope
+        // memory; the workbench is just a floor to stand on.
+        let root = typeof p.root === 'string' ? p.root : projectRoot;
+        if (!root) {
+          root = join(paths.home, 'workbench');
+          mkdirSync(root, { recursive: true });
+        }
         const sessionId = typeof p.sessionId === 'number' ? p.sessionId : createSession('dev', project);
         if (p.sessionGrantAll === true) {
           // The CLI's --allow flag: pre-grant the write/exec tools for this
@@ -481,10 +495,10 @@ export class Hephd {
           runAgent(this.cfg, this.providers, this.broker,
             { sessionId, root, task: p.task as string },
             {
-              onDelta: text => this.send(ws, { event: 'agent.delta', params: { reqId: req.id, text } }),
-              onTool: (name, summary, ms, ok, result) =>
-                this.send(ws, { event: 'agent.tool', params: { reqId: req.id, name, summary, ms, ok, result } }),
-              ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq } }),
+              onDelta: text => this.send(ws, { event: 'agent.delta', params: { reqId: req.id, sessionId, text } }),
+              onTool: (name, summary, ms, ok, result, detail) =>
+                this.send(ws, { event: 'agent.tool', params: { reqId: req.id, sessionId, name, summary, ms, ok, result, detail } }),
+              ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq, sessionId } }),
               notify: (event, params) => this.broadcast(event, params),
             },
           ).then(result => ({ sessionId, ...result })),
@@ -615,12 +629,14 @@ export class Hephd {
     ws: WebSocket, reqId: number, sessionId: number, text: string,
     refSessions: number[] = [], images: { mime: string; data: string; name: string }[] = [],
   ) {
+    // Every event carries its sessionId — the shell routes streams to the
+    // right transcript no matter what the user is looking at.
     return this.runExchange(sessionId, text, {
-      onDelta: t => this.send(ws, { event: 'chat.delta', params: { reqId, text: t } }),
+      onDelta: t => this.send(ws, { event: 'chat.delta', params: { reqId, sessionId, text: t } }),
       onDone: usage => this.send(ws, { event: 'chat.done', params: { reqId, sessionId, usage } }),
       // same event the dev lane uses — the shell's tool table just works
       onTool: (name, summary, ms, ok, result) =>
-        this.send(ws, { event: 'agent.tool', params: { reqId, name, summary, ms, ok, result } }),
+        this.send(ws, { event: 'agent.tool', params: { reqId, sessionId, name, summary, ms, ok, result } }),
       refSessions,
       images,
     });

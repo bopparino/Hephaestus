@@ -43,7 +43,7 @@ When the task is done, summarize what changed and how you verified it.`;
 
 export interface AgentEvents {
   onDelta(text: string): void;
-  onTool(name: string, summary: string, ms: number, ok: boolean, result?: string): void;
+  onTool(name: string, summary: string, ms: number, ok: boolean, result?: string, detail?: string): void;
   ask: ((req: AskRequest) => void) | null;
   /** broadcast hook for background-delegation completions */
   notify?(event: string, params: Record<string, unknown>): void;
@@ -187,7 +187,12 @@ export async function runAgent(
       }
 
       const ms = Date.now() - started;
-      events.onTool(call.name, summarize(call), ms, ok, result.slice(0, 800));
+      // fs_write ships the written content so the shell can show the code
+      // as it lands — the live preview is the work itself, not a receipt.
+      const detail = call.name === 'fs_write' && ok
+        ? String(call.args.content ?? '').slice(0, 4000)
+        : undefined;
+      events.onTool(call.name, summarize(call), ms, ok, result.slice(0, 800), detail);
       saveMessage(sessionId, 'tool' as never, `[${call.name}] ${summarize(call)} → ${result.slice(0, 300)}`);
       messagesRef.push({ role: 'tool', content: result, toolCallId: call.id, toolName: call.name });
     }

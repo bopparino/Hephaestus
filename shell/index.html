@@ -34,9 +34,7 @@
       <footer class="rail__footer">
         <button class="nav-row" data-view="artifacts"><span>Artifacts</span><span class="nav-row__count" id="count-artifacts"></span></button>
         <button class="nav-row" data-view="memory"><span>Memory</span><span class="nav-row__count" id="count-memory"></span></button>
-        <button class="nav-row" data-view="receipts"><span>Receipts</span></button>
-        <button class="nav-row" data-view="connectors"><span>Connectors</span><span class="nav-row__count" id="count-connectors"></span></button>
-        <button class="nav-row" id="open-settings"><span>Settings</span></button>
+        <button class="nav-row" data-view="settings"><span>Settings</span></button>
         <select id="skin-select" title="skin"></select>
         <div class="rail__status"><span id="conn">linking…</span><span>2.0</span></div>
       </footer>
@@ -69,6 +67,7 @@
               <button class="mode__seg" data-mode="chat" aria-pressed="true">chat</button>
               <button class="mode__seg" data-mode="dev" aria-pressed="false">dev</button>
             </div>
+            <button id="perm-btn" title="permission mode — ask: everything asks · auto: writes flow, commands ask · bypass: everything flows (hardline blocks always)">ask</button>
             <span class="composer__spring"></span>
             <button class="modelbtn" id="model-btn"><span id="model-name">—</span><span class="modelbtn__caret">▾</span></button>
             <button class="send" id="send" disabled>Send</button>
@@ -118,14 +117,6 @@
       <div class="modal__actions">
         <button id="pm-cancel">Cancel</button>
         <button id="pm-create" class="primary">Create project</button>
-      </div>
-    </div>
-    <div id="settings-modal" class="hidden">
-      <div class="modal__title modal__title--calm">SETTINGS</div>
-      <div id="settings-body"></div>
-      <div class="modal__actions">
-        <button id="settings-cancel">Close</button>
-        <button id="settings-save" class="primary">Save</button>
       </div>
     </div>
   </div>

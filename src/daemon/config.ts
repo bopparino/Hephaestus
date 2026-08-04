@@ -29,6 +29,12 @@ export interface Config {
     tone: string;   // plain | warm | dry
     notes: string;  // freeform: how the workspace should sound in conversation
   };
+  permissions: {
+    /** ask — every write/exec asks (default). auto — writes flow, exec
+     *  still asks. bypass — everything flows. The hardline list blocks in
+     *  ALL modes; there is no mode that approves the unapprovable. */
+    mode: 'ask' | 'auto' | 'bypass';
+  };
 }
 
 const DEFAULTS: Config = {
@@ -51,6 +57,7 @@ const DEFAULTS: Config = {
   memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200, compactThreshold: 16000 },
   mcp: { servers: {} },
   voice: { tone: 'plain', notes: '' },
+  permissions: { mode: 'ask' },
 };
 
 const DEFAULT_TOML = `# Hephaestus — ~/.hephaestus/config.toml
@@ -116,6 +123,11 @@ owner_id = ${JSON.stringify(cfg.channels.telegram.ownerId)}
 tone = ${JSON.stringify(cfg.voice.tone)}
 notes = ${JSON.stringify(cfg.voice.notes)}
 
+[permissions]
+# ask (everything asks) | auto (writes flow, exec asks) | bypass (all flows).
+# The hardline list blocks in every mode.
+mode = ${JSON.stringify(cfg.permissions.mode)}
+
 [memory]
 capture_every = ${cfg.memory.captureEvery}
 recent_window = ${cfg.memory.recentWindow}
@@ -161,6 +173,8 @@ export function loadConfig(): Config {
   const voice = raw.voice as { tone?: unknown; notes?: unknown } | undefined;
   if (typeof voice?.tone === 'string') cfg.voice.tone = voice.tone;
   if (typeof voice?.notes === 'string') cfg.voice.notes = voice.notes;
+  const perms = raw.permissions as { mode?: unknown } | undefined;
+  if (perms?.mode === 'ask' || perms?.mode === 'auto' || perms?.mode === 'bypass') cfg.permissions.mode = perms.mode;
   // [mcp.servers.<name>] command = "npx", args = ["-y", "@scope/server", ...]
   const mcpServers = (raw.mcp as { servers?: Record<string, { command?: unknown; args?: unknown }> } | undefined)?.servers ?? {};
   for (const [name, entry] of Object.entries(mcpServers)) {
