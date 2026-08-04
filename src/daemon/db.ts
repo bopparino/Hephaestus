@@ -92,6 +92,16 @@ const MIGRATIONS: string[] = [
   END;
   INSERT INTO messages_fts(rowid, content) SELECT id, content FROM messages;
   `,
+  // v3 — Phase 2: standing permission grants (soft-revoked, never deleted).
+  `
+  CREATE TABLE IF NOT EXISTS grants (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    tool TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    revoked INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ];
 
 let db: Database.Database | null = null;

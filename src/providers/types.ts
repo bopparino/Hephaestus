@@ -2,13 +2,33 @@
 
 export type ModelRole = 'chat' | 'agent' | 'utility' | 'embed';
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  /** assistant turns that requested tools */
+  toolCalls?: ToolCall[];
+  /** tool turns: which call this result answers */
+  toolCallId?: string;
+  toolName?: string;
+}
+
+/** Model-facing tool description — JSON Schema parameters, provider-mapped
+ *  by each adapter. */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 }
 
 export type StreamEvent =
   | { type: 'text'; text: string }
+  | { type: 'tool_call'; call: ToolCall }
   | { type: 'usage'; input?: number; output?: number }
   | { type: 'done' };
 
@@ -18,6 +38,7 @@ export interface ChatOptions {
   /** false disables reasoning where supported — the utility lane's setting:
    *  thinking models can burn the whole budget reasoning and emit nothing. */
   think?: boolean;
+  tools?: ToolSpec[];
   signal?: AbortSignal;
 }
 

@@ -10,6 +10,8 @@ import { bumpCaptureCounter, isTrivial, runCapture } from './capture.js';
 import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
 import { searchMessages } from './search.js';
+import { listReceipts, runAgent } from './agent.js';
+import { PermissionBroker } from './permissions.js';
 import { Providers } from '../providers/roles.js';
 import { ProviderError } from '../providers/types.js';
 import type { ChatMessage } from '../providers/types.js';
@@ -33,6 +35,7 @@ export class Hephd {
   // live prompt — the prefix cache survives; the next session sees them.
   private systemSnapshots = new Map<number, string>();
   private nightlyTimer: ReturnType<typeof setInterval>;
+  private broker = new PermissionBroker();
 
   constructor(private cfg: Config, private token: string) {
     this.skins = loadSkins();
@@ -185,6 +188,39 @@ export class Hephd {
       case 'search.messages':
         if (typeof p.query !== 'string') throw new Error('search.messages needs query');
         return searchMessages(p.query, typeof p.limit === 'number' ? p.limit : 5);
+
+      case 'agent.run': {
+        if (typeof p.task !== 'string' || !p.task.trim()) throw new Error('agent.run needs task');
+        if (typeof p.root !== 'string') throw new Error('agent.run needs root');
+        const sessionId = typeof p.sessionId === 'number' ? p.sessionId : createSession('dev');
+        if (p.sessionGrantAll === true) {
+          // The CLI's --allow flag: pre-grant the write/exec tools for this
+          // session. Receipted per-tool; the hardline tier still applies.
+          for (const tool of ['fs_write', 'shell']) this.broker.grant(sessionId, tool, 'session');
+        }
+        return this.enqueue(sessionId, () =>
+          runAgent(this.cfg, this.providers, this.broker,
+            { sessionId, root: p.root as string, task: p.task as string },
+            {
+              onDelta: text => this.send(ws, { event: 'agent.delta', params: { reqId: req.id, text } }),
+              onTool: (name, summary, ms, ok) =>
+                this.send(ws, { event: 'agent.tool', params: { reqId: req.id, name, summary, ms, ok } }),
+              ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq } }),
+            },
+          ).then(result => ({ sessionId, ...result })),
+        );
+      }
+
+      case 'approval.respond': {
+        const okDecisions = ['allow-once', 'allow-session', 'allow-always', 'deny'];
+        if (typeof p.approvalId !== 'string' || !okDecisions.includes(String(p.decision))) {
+          throw new Error('approval.respond needs approvalId and a valid decision');
+        }
+        return { accepted: this.broker.respond(p.approvalId, p.decision as never) };
+      }
+
+      case 'receipts.list':
+        return listReceipts(typeof p.limit === 'number' ? p.limit : 30);
 
       case 'maintenance.run':
         return runNightly(this.cfg, this.providers);

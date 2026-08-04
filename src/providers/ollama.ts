@@ -8,6 +8,7 @@ export class OllamaAdapter implements ProviderAdapter {
   readonly name = 'ollama';
   private numCtxCache = new Map<string, number>();
   private autoModel: string | null = null;
+  private callSeq = 0; // ollama doesn't issue tool-call ids; we do
 
   constructor(private url: string) {}
 
@@ -62,6 +63,18 @@ export class OllamaAdapter implements ProviderAdapter {
     const resolved = await this.resolveModel(model);
     const numCtx = await this.numCtx(resolved);
 
+    const wireMessages = messages.map(m => {
+      if (m.role === 'tool') return { role: 'tool', content: m.content, tool_name: m.toolName };
+      if (m.role === 'assistant' && m.toolCalls?.length) {
+        return {
+          role: 'assistant',
+          content: m.content,
+          tool_calls: m.toolCalls.map(c => ({ function: { name: c.name, arguments: c.args } })),
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+
     // One transient retry before any bytes stream; after first byte, fail loud.
     let res: Response | null = null;
     for (let attempt = 0; ; attempt++) {
@@ -72,10 +85,13 @@ export class OllamaAdapter implements ProviderAdapter {
           signal: opts.signal,
           body: JSON.stringify({
             model: resolved,
-            messages,
+            messages: wireMessages,
             stream: true,
             keep_alive: '30m',
             ...(opts.think === false ? { think: false } : {}),
+            ...(opts.tools?.length
+              ? { tools: opts.tools.map(t => ({ type: 'function', function: t })) }
+              : {}),
             options: {
               num_ctx: numCtx,
               // Reply length can never be allowed to eat the window.
@@ -122,6 +138,17 @@ export class OllamaAdapter implements ProviderAdapter {
         if (delta) {
           sawText = true;
           yield { type: 'text', text: delta };
+        }
+        for (const tc of j.message?.tool_calls ?? []) {
+          sawText = true; // a tool call is a real response
+          yield {
+            type: 'tool_call',
+            call: {
+              id: `call_${++this.callSeq}`,
+              name: String(tc.function?.name ?? ''),
+              args: (tc.function?.arguments ?? {}) as Record<string, unknown>,
+            },
+          };
         }
         if (j.done) {
           yield { type: 'usage', input: j.prompt_eval_count, output: j.eval_count };

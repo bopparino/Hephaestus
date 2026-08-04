@@ -17,9 +17,30 @@ export class AnthropicAdapter implements ProviderAdapter {
       );
     }
 
-    // Anthropic takes system as a top-level field, not a message.
+    // Anthropic takes system as a top-level field, not a message; tool
+    // results ride as tool_result blocks in user turns, and consecutive
+    // tool messages must merge into ONE user turn (roles alternate).
     const system = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
-    const turns = messages.filter(m => m.role !== 'system');
+    const turns: { role: 'user' | 'assistant'; content: unknown }[] = [];
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      if (m.role === 'tool') {
+        const block = { type: 'tool_result', tool_use_id: m.toolCallId, content: m.content };
+        const last = turns.at(-1);
+        if (last?.role === 'user' && Array.isArray(last.content)) last.content.push(block);
+        else turns.push({ role: 'user', content: [block] });
+      } else if (m.role === 'assistant' && m.toolCalls?.length) {
+        turns.push({
+          role: 'assistant',
+          content: [
+            ...(m.content ? [{ type: 'text', text: m.content }] : []),
+            ...m.toolCalls.map(c => ({ type: 'tool_use', id: c.id, name: c.name, input: c.args })),
+          ],
+        });
+      } else {
+        turns.push({ role: m.role, content: m.content });
+      }
+    }
 
     let res: Response;
     try {
@@ -36,6 +57,9 @@ export class AnthropicAdapter implements ProviderAdapter {
           max_tokens: opts.maxTokens ?? 4096,
           ...(system ? { system } : {}),
           ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+          ...(opts.tools?.length
+            ? { tools: opts.tools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters })) }
+            : {}),
           messages: turns,
           stream: true,
         }),
@@ -56,6 +80,9 @@ export class AnthropicAdapter implements ProviderAdapter {
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     let buf = '';
+    // tool_use blocks stream their input as JSON fragments; accumulate per
+    // block index and emit the complete call at content_block_stop.
+    const pendingTools = new Map<number, { id: string; name: string; json: string }>();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -71,9 +98,29 @@ export class AnthropicAdapter implements ProviderAdapter {
           continue;
         }
         switch (j.type) {
+          case 'content_block_start':
+            if (j.content_block?.type === 'tool_use') {
+              pendingTools.set(j.index, { id: j.content_block.id, name: j.content_block.name, json: '' });
+            }
+            break;
+          case 'content_block_stop': {
+            const pending = pendingTools.get(j.index);
+            if (pending) {
+              pendingTools.delete(j.index);
+              let args: Record<string, unknown> = {};
+              try {
+                args = pending.json ? JSON.parse(pending.json) : {};
+              } catch { /* malformed input json — surface the empty call */ }
+              yield { type: 'tool_call', call: { id: pending.id, name: pending.name, args } };
+            }
+            break;
+          }
           case 'content_block_delta':
             if (j.delta?.type === 'text_delta' && j.delta.text) {
               yield { type: 'text', text: j.delta.text };
+            } else if (j.delta?.type === 'input_json_delta') {
+              const pending = pendingTools.get(j.index);
+              if (pending) pending.json += j.delta.partial_json ?? '';
             }
             break;
           case 'message_start':

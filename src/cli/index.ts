@@ -269,6 +269,70 @@ async function cmdNightly(): Promise<void> {
   });
 }
 
+async function cmdDev(args: string[]): Promise<void> {
+  let root = process.cwd();
+  let allowAll = false;
+  const taskParts: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-C') root = args[++i];
+    else if (args[i] === '--allow') allowAll = true;
+    else taskParts.push(args[i]);
+  }
+  const task = taskParts.join(' ').trim();
+  if (!task) throw new Error('usage: heph dev [-C root] [--allow] "<task>"');
+
+  await withClient(async (client, skin) => {
+    const accent = fg(skin.palette.accent);
+    const muted = fg(skin.palette.fgMuted);
+    const danger = fg(skin.palette.danger);
+    const positive = fg(skin.palette.positive);
+
+    console.log(`${accent}DEV AUTOMATON${RESET} ${muted}· ${root}${allowAll ? ' · session-granted: fs_write, shell' : ''}${RESET}\n`);
+
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    client.onEvent = (event, params) => {
+      if (event === 'agent.delta') {
+        process.stdout.write(String(params.text));
+      } else if (event === 'agent.tool') {
+        const mark = params.ok ? `${positive}⚒${RESET}` : `${danger}⚒${RESET}`;
+        console.log(`\n${mark} ${muted}${params.name}${RESET} ${String(params.summary)} ${muted}(${params.ms}ms)${RESET}`);
+      } else if (event === 'approval.request') {
+        console.log(`\n${danger}⚠ approval needed${RESET} — ${accent}${params.tool}${RESET} [${params.risk}]`);
+        console.log(`  ${String(params.summary)}`);
+        rl.question(`  ${muted}[y]es once / [s]ession / [a]lways / [n]o:${RESET} `, answer => {
+          const decision =
+            answer.trim().toLowerCase() === 'y' ? 'allow-once'
+            : answer.trim().toLowerCase() === 's' ? 'allow-session'
+            : answer.trim().toLowerCase() === 'a' ? 'allow-always'
+            : 'deny';
+          void client.request('approval.respond', { approvalId: params.approvalId, decision });
+        });
+      }
+    };
+
+    try {
+      const result = await client.request<{ iterations: number; toolCalls: number }>('agent.run', {
+        task, root, sessionGrantAll: allowAll,
+      });
+      console.log(`\n${muted}— ${result.iterations} iteration(s), ${result.toolCalls} tool call(s) · every one receipted (heph receipts)${RESET}`);
+    } finally {
+      rl.close();
+    }
+  });
+}
+
+async function cmdReceipts(): Promise<void> {
+  await withClient(async (client, skin) => {
+    const accent = fg(skin.palette.accent);
+    const muted = fg(skin.palette.fgMuted);
+    interface Receipt { id: number; created_at: string; session_id: number | null; kind: string; detail: string }
+    const receipts = await client.request<Receipt[]>('receipts.list', { limit: 30 });
+    for (const receipt of [...receipts].reverse()) {
+      console.log(`${muted}#${receipt.id} ${receipt.created_at}${RESET} ${accent}${receipt.kind}${RESET} ${receipt.detail.slice(0, 140)}`);
+    }
+  });
+}
+
 // ---- main -------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -299,8 +363,14 @@ async function main(): Promise<void> {
     case 'nightly':
       await cmdNightly();
       break;
+    case 'dev':
+      await cmdDev(rest);
+      break;
+    case 'receipts':
+      await cmdReceipts();
+      break;
     default:
-      console.log('usage: heph [chat [-m msg] | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
+      console.log('usage: heph [chat [-m msg] | dev [-C root] [--allow] "task" | receipts | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
       process.exitCode = 1;
   }
 }
