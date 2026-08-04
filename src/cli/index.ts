@@ -353,6 +353,43 @@ async function main(): Promise<void> {
       await cmdChat(mIdx !== -1 ? rest.slice(mIdx + 1).join(' ') : undefined, project);
       break;
     }
+    case 'jobs': {
+      await withClient(async (client, skin) => {
+        const accent = fg(skin.palette.accent);
+        const muted = fg(skin.palette.fgMuted);
+        const sub = rest[0];
+        if (sub === 'add') {
+          let automaton = 'chat';
+          let project: string | undefined;
+          const devIdx = rest.indexOf('--dev');
+          if (devIdx !== -1) { automaton = 'dev'; rest.splice(devIdx, 1); }
+          const pIdx = rest.indexOf('--project');
+          if (pIdx !== -1) { project = rest[pIdx + 1]; rest.splice(pIdx, 2); }
+          const [, name, schedule, ...promptParts] = rest;
+          if (!name || !schedule || !promptParts.length) {
+            throw new Error('usage: heph jobs add <name> "<schedule>" <prompt…> [--dev] [--project <name>]\n  schedules: "every 15m" | "daily@09:00" | "once@2026-01-01T09:00"');
+          }
+          await client.request('jobs.add', { name, schedule, prompt: promptParts.join(' '), automaton, project });
+          console.log(`${muted}scheduled ${name} — ${schedule}${RESET}`);
+          return;
+        }
+        if (sub === 'rm' || sub === 'run') {
+          const name = rest[1];
+          if (!name) throw new Error(`usage: heph jobs ${sub} <name>`);
+          await client.request(sub === 'rm' ? 'jobs.remove' : 'jobs.run', { name });
+          console.log(`${muted}${sub === 'rm' ? `removed ${name}` : `ran ${name} — heph jobs shows the result`}${RESET}`);
+          return;
+        }
+        const jobs = await client.request<{ name: string; schedule: string; automaton: string; next_run: string | null; last_run: string | null; last_result: string | null }[]>('jobs.list');
+        if (!jobs.length) console.log(`${muted}(no jobs — heph jobs add <name> "every 2h" <prompt>)${RESET}`);
+        for (const j of jobs) {
+          const next = j.next_run ? j.next_run.slice(0, 16).replace('T', ' ') : '—';
+          const last = j.last_run ? `${j.last_result} @ ${j.last_run.slice(5, 16)}` : 'never run';
+          console.log(`${accent}${j.name}${RESET} ${j.schedule} ${muted}[${j.automaton}] next ${next} · ${last}${RESET}`);
+        }
+      });
+      break;
+    }
     case 'project': {
       await withClient(async (client, skin) => {
         const accent = fg(skin.palette.accent);

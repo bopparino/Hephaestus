@@ -117,6 +117,22 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
   `,
+  // v6 — the heartbeat: scheduled jobs. Soft-disabled, never deleted.
+  `
+  CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    name TEXT NOT NULL UNIQUE,
+    schedule TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    automaton TEXT NOT NULL DEFAULT 'chat',
+    project TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    next_run TEXT,
+    last_run TEXT,
+    last_result TEXT
+  );
+  `,
 ];
 
 let db: Database.Database | null = null;

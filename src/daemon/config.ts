@@ -19,6 +19,9 @@ export interface Config {
     coreBudget: number;     // chars — the always-visible tier-1 budget
     compactThreshold: number; // est. tokens before an agent run compacts
   };
+  mcp: {
+    servers: Record<string, { command: string; args: string[] }>;
+  };
 }
 
 const DEFAULTS: Config = {
@@ -39,6 +42,7 @@ const DEFAULTS: Config = {
   user: { name: 'the user' },
   channels: { telegram: { ownerId: null } },
   memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200, compactThreshold: 16000 },
+  mcp: { servers: {} },
 };
 
 const DEFAULT_TOML = `# Hephaestus — ~/.hephaestus/config.toml
@@ -105,7 +109,11 @@ recent_window = ${cfg.memory.recentWindow}
 fold_chunk = ${cfg.memory.foldChunk}
 core_budget = ${cfg.memory.coreBudget}
 compact_threshold = ${cfg.memory.compactThreshold}
-`;
+${Object.entries(cfg.mcp.servers).map(([name, s]) => `
+[mcp.servers.${name}]
+command = ${JSON.stringify(s.command)}
+args = [${s.args.map(a => JSON.stringify(a)).join(', ')}]
+`).join('')}`;
   writeFileSync(paths.config, toml);
 }
 
@@ -137,5 +145,15 @@ export function loadConfig(): Config {
   if (typeof raw.memory?.fold_chunk === 'number') cfg.memory.foldChunk = raw.memory.fold_chunk;
   if (typeof raw.memory?.core_budget === 'number') cfg.memory.coreBudget = raw.memory.core_budget;
   if (typeof raw.memory?.compact_threshold === 'number') cfg.memory.compactThreshold = raw.memory.compact_threshold;
+  // [mcp.servers.<name>] command = "npx", args = ["-y", "@scope/server", ...]
+  const mcpServers = (raw.mcp as { servers?: Record<string, { command?: unknown; args?: unknown }> } | undefined)?.servers ?? {};
+  for (const [name, entry] of Object.entries(mcpServers)) {
+    if (typeof entry?.command === 'string' && /^[a-z0-9][a-z0-9_-]*$/i.test(name)) {
+      cfg.mcp.servers[name] = {
+        command: entry.command,
+        args: Array.isArray(entry.args) ? entry.args.map(String) : [],
+      };
+    }
+  }
   return cfg;
 }

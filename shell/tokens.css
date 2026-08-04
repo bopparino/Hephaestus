@@ -1,0 +1,66 @@
+/* Hephaestus 2.0 — design tokens, ported verbatim from the design handoff
+   (design_handoff_hephaestus_2/tokens.css). These marble values ARE the
+   default skin; dark skins overwrite the same variables via the skin
+   engine's mapping in app.js. Do not invent values — the handoff is truth. */
+
+@font-face {
+  font-family: 'EB Garamond';
+  font-style: normal;
+  font-weight: 500;
+  src: local('EB Garamond'), url('fonts/EBGaramond-Medium.woff') format('woff');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 500;
+  src: local('JetBrains Mono'), url('fonts/JetBrainsMono.woff2') format('woff2');
+}
+
+:root {
+  /* ---------- Surfaces (warm marble, low chroma) ---------- */
+  --paper:            #F7F5F0;
+  --paper-raised:     #FFFFFF;
+  --paper-sunken:     #F2EFE8;
+  --rail:             #F1EEE7;
+  --rail-inspector:   #F4F1EB;
+  --stone:            #EFECE4;
+  --stone-strong:     #E4E0D6;
+  --stone-active:     #EAE6DC;
+
+  /* ---------- Lines ---------- */
+  --hairline:         #E4E0D6;
+  --hairline-soft:    #EDE9E0;
+  --hairline-rail:    #DEDAD0;
+  --hairline-strong:  #D2CCC1;
+  --window-border:    #D6D0C5;
+  --separator:        #CDC6B9;
+
+  /* ---------- Ink ---------- */
+  --ink:              #211E1A;
+  --ink-2:            #363129;
+  --ink-3:            #514B42;
+  --ink-4:            #6B655C;
+  --ink-5:            #756D61;
+  --ink-placeholder:  #857D71;
+  --ink-muted:        #7B7469;
+
+  /* ---------- Accent: oxblood — rationed ---------- */
+  --oxblood:          #7A2320;
+  --oxblood-hover:    #5E1A17;
+  --on-oxblood:       #F7F5F0;
+
+  /* ---------- Type ---------- */
+  --font-ui:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mark:  "EB Garamond", Georgia, "Times New Roman", serif;
+
+  /* ---------- Radius: crisp ---------- */
+  --r-control:  3px;
+  --r-field:    4px;
+
+  /* ---------- Structure ---------- */
+  --w-rail:       212px;
+  --w-inspector:  300px;
+  --w-column:     700px;
+  --h-toolbar:     46px;
+}

@@ -13,6 +13,10 @@ import { bumpCaptureCounter, isTrivial, runCapture } from './capture.js';
 import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
 import { searchMessages, sessionBookends } from './search.js';
+import { initMcp, stopMcp, mcpStatus } from './mcp.js';
+import { webAvailable } from './web.js';
+import { addJob, listJobs, getJob, removeJob, claimDue, recordRun, type Job } from './jobs.js';
+import { deliverToOwner } from './channels/telegram.js';
 import { listReceipts, runAgent } from './agent.js';
 import { listSkills, readSkill } from './skills-lib.js';
 import { PermissionBroker } from './permissions.js';
@@ -39,17 +43,25 @@ export class Hephd {
   // live prompt — the prefix cache survives; the next session sees them.
   private systemSnapshots = new Map<number, string>();
   private nightlyTimer: ReturnType<typeof setInterval>;
+  private heartbeatTimer: ReturnType<typeof setInterval>;
   private broker = new PermissionBroker();
 
   constructor(private cfg: Config, private token: string) {
     this.skins = loadSkins();
     this.providers = new Providers(cfg);
     initEmbeddings(cfg);
+    // MCP servers connect in the background; their tools appear in the
+    // agent's toolbox as each one comes up. A failed server is a receipt,
+    // not a crash.
+    void initMcp(cfg);
     this.nightlyTimer = setInterval(() => {
       if (nightlyDue()) {
         runNightly(this.cfg, this.providers).catch(err => console.error('[nightly]', err));
       }
     }, 30 * 60 * 1000);
+    // The heartbeat — due jobs run sequentially; claiming already advanced
+    // next_run, so a crash mid-run can never double-fire.
+    this.heartbeatTimer = setInterval(() => void this.tickJobs(), 60 * 1000);
     // The shell — a static SPA served from shell/, loopback-only like
     // everything else. It authenticates the WS with the same token the CLI
     // uses, passed in the URL fragment by `heph ui` (fragments never reach
@@ -60,6 +72,8 @@ export class Hephd {
       '.js': 'text/javascript; charset=utf-8',
       '.css': 'text/css; charset=utf-8',
       '.svg': 'image/svg+xml',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
     };
     this.http = createServer((req, res) => {
       if (req.url === '/healthz') {
@@ -69,8 +83,8 @@ export class Hephd {
       }
       const path = (req.url ?? '/').split('?')[0].split('#')[0];
       const file = path === '/' ? 'index.html' : path.slice(1);
-      // No traversal, no subdirs — the shell is three flat files.
-      if (/^[\w.-]+$/.test(file) && MIME[extname(file)]) {
+      // No traversal — flat files plus the vendored fonts/ directory.
+      if (/^(fonts\/)?[\w.-]+$/.test(file) && MIME[extname(file)]) {
         const full = join(shellDir, file);
         if (existsSync(full)) {
           // no-store: the shell is read live from disk; a cached stylesheet
@@ -107,6 +121,8 @@ export class Hephd {
 
   close(): void {
     clearInterval(this.nightlyTimer);
+    clearInterval(this.heartbeatTimer);
+    stopMcp();
     for (const client of this.wss.clients) client.close(1001, 'daemon shutting down');
     this.wss.close();
     this.http.close();
@@ -204,6 +220,37 @@ export class Hephd {
         receipt('config_set', { models: this.cfg.models, user: this.cfg.user.name });
         return { ok: true, models: this.cfg.models };
       }
+
+      case 'jobs.add': {
+        addJob({
+          name: String(p.name ?? ''),
+          schedule: String(p.schedule ?? ''),
+          prompt: String(p.prompt ?? ''),
+          automaton: typeof p.automaton === 'string' ? p.automaton : 'chat',
+          project: this.resolveProject(p.project),
+        });
+        return { ok: true, job: getJob(String(p.name)) };
+      }
+
+      case 'jobs.list':
+        return listJobs();
+
+      case 'jobs.remove': {
+        if (typeof p.name !== 'string') throw new Error('jobs.remove needs name');
+        removeJob(p.name);
+        return { ok: true };
+      }
+
+      case 'jobs.run': {
+        if (typeof p.name !== 'string') throw new Error('jobs.run needs name');
+        const job = getJob(p.name);
+        if (!job) throw new Error(`no such job: ${p.name}`);
+        await this.runJob(job);
+        return { ok: true, job: getJob(p.name) };
+      }
+
+      case 'mcp.status':
+        return { servers: mcpStatus(), web: webAvailable() };
 
       case 'artifacts.list': {
         const rows = getDb()
@@ -346,8 +393,8 @@ export class Hephd {
             { sessionId, root, task: p.task as string },
             {
               onDelta: text => this.send(ws, { event: 'agent.delta', params: { reqId: req.id, text } }),
-              onTool: (name, summary, ms, ok) =>
-                this.send(ws, { event: 'agent.tool', params: { reqId: req.id, name, summary, ms, ok } }),
+              onTool: (name, summary, ms, ok, result) =>
+                this.send(ws, { event: 'agent.tool', params: { reqId: req.id, name, summary, ms, ok, result } }),
               ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq } }),
             },
           ).then(result => ({ sessionId, ...result })),
@@ -380,6 +427,53 @@ export class Hephd {
       default:
         throw new Error(`unknown method: ${req.method}`);
     }
+  }
+
+  // ---- the heartbeat -----------------------------------------------------
+
+  private async tickJobs(): Promise<void> {
+    for (const job of claimDue()) {
+      try {
+        await this.runJob(job);
+      } catch (err) {
+        recordRun(job.name, { silent: false, delivered: false, error: String(err) });
+      }
+    }
+  }
+
+  private async runJob(job: Job): Promise<void> {
+    const prompt = `${job.prompt}\n\n(Scheduled run "${job.name}". If nothing needs ${this.cfg.user.name}'s attention, reply with exactly [SILENT].)`;
+    if (job.automaton === 'dev') {
+      const row = getDb().prepare('SELECT root FROM projects WHERE name = ? AND archived = 0')
+        .get(job.project) as { root: string } | undefined;
+      if (!row) throw new Error(`project not registered: ${job.project}`);
+      const sessionId = createSession('dev', job.project);
+      // Unattended: ask is null — the broker denies anything a standing
+      // grant doesn't cover. Scheduled dev jobs read freely, write only
+      // where the user has said "always".
+      const result = await runAgent(this.cfg, this.providers, this.broker,
+        { sessionId, root: row.root, task: prompt },
+        { onDelta: () => {}, onTool: () => {}, ask: null });
+      await this.finishJob(job, result.text);
+    } else {
+      const sessionId = createSession('chat', job.project);
+      await this.runExchange(sessionId, prompt, {
+        deliver: text => this.finishJob(job, text),
+      });
+    }
+  }
+
+  /** [SILENT] suppresses delivery; everything else goes to the owner's
+   *  channel if one exists. The session keeps the transcript either way. */
+  private async finishJob(job: Job, text: string): Promise<boolean> {
+    const silent = text.trim() === '[SILENT]';
+    if (silent) {
+      recordRun(job.name, { silent: true, delivered: false });
+      return true;
+    }
+    const delivered = await deliverToOwner(`[${job.name}]\n${text}`);
+    recordRun(job.name, { silent: false, delivered });
+    return true;
   }
 
   /** Validate a client-supplied project name against the registry. */

@@ -11,12 +11,32 @@ import type { Hephd } from '../server.js';
 
 const SESSION_KEY = 'telegram_session';
 
+// Held for proactive delivery (heartbeat jobs) — set by startTelegram.
+let activeBot: Bot | null = null;
+let activeOwner: string | null = null;
+
+/** Deliver a proactive message to the owner. False = not configured or send
+ *  failed — the caller decides what "undelivered" means (usually: stored). */
+export async function deliverToOwner(text: string): Promise<boolean> {
+  if (!activeBot || !activeOwner) return false;
+  try {
+    for (const part of splitMessage(text)) {
+      await activeBot.api.sendMessage(activeOwner, part);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function startTelegram(cfg: Config, daemon: Hephd): Bot | null {
   const token = getSecret('TELEGRAM_BOT_TOKEN');
   if (!token) return null; // not configured — the channel simply doesn't exist
   const ownerId = cfg.channels.telegram.ownerId;
 
   const bot = new Bot(token);
+  activeBot = bot;
+  activeOwner = ownerId ? String(ownerId) : null;
   const db = getDb();
 
   const boundSession = (): number => {

@@ -2,7 +2,9 @@ import type { Config } from './config.js';
 import { getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { maybeCompact } from './compact.js';
 import { renderCore } from './memory.js';
-import { TOOLS, toolSpecs, type ToolContext } from './tools.js';
+import { TOOLS, type BuiltinTool, type ToolContext } from './tools.js';
+import { WEB_TOOLS, webAvailable } from './web.js';
+import { mcpToolbox } from './mcp.js';
 import type { AskRequest, PermissionBroker } from './permissions.js';
 import type { Providers } from '../providers/roles.js';
 import type { ChatMessage, ToolCall } from '../providers/types.js';
@@ -41,7 +43,7 @@ When the task is done, summarize what changed and how you verified it.`;
 
 export interface AgentEvents {
   onDelta(text: string): void;
-  onTool(name: string, summary: string, ms: number, ok: boolean): void;
+  onTool(name: string, summary: string, ms: number, ok: boolean, result?: string): void;
   ask: ((req: AskRequest) => void) | null;
 }
 
@@ -65,7 +67,12 @@ export async function runAgent(
 
   const { adapter, model: bound } = providers.resolve('agent');
   const model = adapter.resolveModel ? await adapter.resolveModel(bound) : bound;
-  const specs = toolSpecs(DEV_TOOLS);
+  // The toolbox: built-ins + web hands (when keyed) + whatever MCP servers
+  // brought. One map, one broker, one dispatch path.
+  const toolbox: Record<string, BuiltinTool> = Object.fromEntries(DEV_TOOLS.map(n => [n, TOOLS[n]]));
+  if (webAvailable()) Object.assign(toolbox, WEB_TOOLS);
+  Object.assign(toolbox, mcpToolbox());
+  const specs = Object.values(toolbox).map(t => t.spec);
 
   let totalToolCalls = 0;
   let messagesRef = messages;
@@ -96,7 +103,7 @@ export async function runAgent(
     // refinement; correctness first.
     for (const call of calls) {
       totalToolCalls++;
-      const tool = TOOLS[call.name];
+      const tool = toolbox[call.name];
       const started = Date.now();
       let result: string;
       let ok = false;
@@ -122,7 +129,7 @@ export async function runAgent(
       }
 
       const ms = Date.now() - started;
-      events.onTool(call.name, summarize(call), ms, ok);
+      events.onTool(call.name, summarize(call), ms, ok, result.slice(0, 800));
       saveMessage(sessionId, 'tool' as never, `[${call.name}] ${summarize(call)} → ${result.slice(0, 300)}`);
       messagesRef.push({ role: 'tool', content: result, toolCallId: call.id, toolName: call.name });
     }

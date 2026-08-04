@@ -4,74 +4,109 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Hephaestus</title>
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
-    <aside id="sidebar">
-      <div id="brand">
-        <div class="brand-greek">ΗΦΑΙΣΤΟΣ</div>
-        <div class="brand-latin">HEPHAESTUS</div>
+    <aside id="rail">
+      <div class="wordmark">
+        <div class="wordmark__greek">ΗΦΑΙΣΤΟΣ</div>
+        <div class="wordmark__sub">HEPHAESTUS · LOCAL</div>
       </div>
-      <div id="searchbox">
-        <input id="search" type="text" placeholder="search" autocomplete="off" spellcheck="false">
-        <span class="kbd">⌘K</span>
+
+      <button id="switcher" class="switcher">
+        <span class="switcher__label">PROJECT</span>
+        <span class="switcher__name" id="switcher-name">all</span>
+        <span class="switcher__caret">▾</span>
+      </button>
+      <div id="switcher-menu" class="hidden"></div>
+
+      <div class="group">
+        <button class="group__row" id="cmd-search"><span>Search</span><span class="kbd">⌘K</span></button>
+        <button class="group__row" id="cmd-new"><span>New chat</span><span class="kbd">⌘N</span></button>
       </div>
-      <button id="new-chat" class="row-btn"><span>new chat</span><span class="kbd">⌘N</span></button>
-      <nav id="side-nav"></nav>
-      <footer id="side-footer">
-        <button class="row-btn" data-view="artifacts"><span>artifacts</span></button>
-        <button class="row-btn" data-view="memory"><span>memory</span></button>
-        <button class="row-btn" data-view="receipts"><span>receipts</span></button>
-        <button class="row-btn" id="open-settings"><span>settings</span></button>
+
+      <nav id="rail-nav"></nav>
+
+      <div class="rail__spacer"></div>
+
+      <footer class="rail__footer">
+        <button class="nav-row" data-view="artifacts"><span>Artifacts</span><span class="nav-row__count" id="count-artifacts"></span></button>
+        <button class="nav-row" data-view="memory"><span>Memory</span><span class="nav-row__count" id="count-memory"></span></button>
+        <button class="nav-row" data-view="receipts"><span>Receipts</span></button>
+        <button class="nav-row" id="open-settings"><span>Settings</span></button>
         <select id="skin-select" title="skin"></select>
-        <div id="conn" class="conn">linking…</div>
+        <div class="rail__status"><span id="conn">linking…</span><span>2.0</span></div>
       </footer>
     </aside>
 
-    <main id="main">
-      <header id="main-head">
-        <button id="side-toggle" title="toggle sidebar">≡</button>
-        <div id="head-title">—</div>
-      </header>
+    <main id="pane">
+      <div class="toolbar">
+        <button id="rail-toggle" title="toggle rail">☰</button>
+        <span class="toolbar__crumb" id="crumb">new chat</span>
+        <span class="toolbar__sep hidden" id="crumb-sep">/</span>
+        <span class="toolbar__title" id="crumb-title"></span>
+        <span class="toolbar__spring"></span>
+        <span class="toolbar__meta" id="meta-mode">chat</span>
+        <span class="toolbar__rule"></span>
+        <span class="toolbar__meta" id="meta-usage">0 calls · 0 tok</span>
+        <button id="inspector-toggle" title="toggle inspector">▤</button>
+      </div>
+
       <section id="view"></section>
-      <div id="composer">
-        <div id="chips"></div>
-        <div id="composer-row">
-          <button id="attach" title="attach images or files">+</button>
-          <textarea id="input" rows="2" placeholder="state the work — @ to scope it" spellcheck="false"></textarea>
-          <button id="model-btn" title="model"></button>
-          <select id="automaton" title="automaton">
-            <option value="chat">chat</option>
-            <option value="dev">dev</option>
-          </select>
-          <button id="send">send</button>
+
+      <div id="dock">
+        <div class="composer" id="composer">
+          <div class="composer__scope hidden" id="scope-strip"></div>
+          <textarea class="composer__field" id="input" rows="1" placeholder="Describe the work…" spellcheck="false"></textarea>
+          <div class="composer__bar">
+            <button class="iconbtn" id="attach" title="attach images or files">+</button>
+            <button class="iconbtn iconbtn--mono" id="at-btn" title="scope with @">@</button>
+            <span class="bar-rule"></span>
+            <div class="mode" id="mode">
+              <button class="mode__seg" data-mode="chat" aria-pressed="true">chat</button>
+              <button class="mode__seg" data-mode="dev" aria-pressed="false">dev</button>
+            </div>
+            <span class="composer__spring"></span>
+            <button class="modelbtn" id="model-btn"><span id="model-name">—</span><span class="modelbtn__caret">▾</span></button>
+            <button class="send" id="send" disabled>Send</button>
+          </div>
         </div>
         <div id="at-popup" class="hidden"></div>
         <div id="model-popup" class="hidden"></div>
         <input id="file-input" type="file" multiple accept="image/*,.txt,.md,.js,.ts,.py,.json,.yaml,.toml,.css,.html,.sh,.log" class="hidden">
       </div>
     </main>
+
+    <aside id="inspector">
+      <div class="inspector__head" id="inspector-head">THIS CHAT</div>
+      <div id="inspector-body"></div>
+    </aside>
   </div>
 
-  <div id="modal-backdrop" class="hidden">
+  <div id="overlay" class="hidden">
+    <div id="search-box" class="hidden">
+      <input id="search-input" type="text" placeholder="Search the transcripts…" autocomplete="off" spellcheck="false">
+      <div id="search-results"></div>
+    </div>
     <div id="approval-modal" class="hidden">
-      <div class="modal-title">APPROVAL NEEDED</div>
-      <div id="approval-tool" class="modal-tool"></div>
+      <div class="modal__title">APPROVAL NEEDED</div>
+      <div class="modal__tool" id="approval-tool"></div>
       <pre id="approval-summary"></pre>
-      <div class="modal-actions">
-        <button data-decision="allow-once">once</button>
-        <button data-decision="allow-session">session</button>
-        <button data-decision="allow-always">always</button>
-        <button data-decision="deny" class="deny">deny</button>
+      <div class="modal__actions">
+        <button data-decision="allow-once">Once</button>
+        <button data-decision="allow-session">Session</button>
+        <button data-decision="allow-always">Always</button>
+        <button data-decision="deny" class="deny">Deny</button>
       </div>
     </div>
     <div id="settings-modal" class="hidden">
-      <div class="modal-title">SETTINGS</div>
+      <div class="modal__title modal__title--calm">SETTINGS</div>
       <div id="settings-body"></div>
-      <div class="modal-actions">
-        <button id="settings-cancel">close</button>
-        <button id="settings-save" class="primary">save</button>
+      <div class="modal__actions">
+        <button id="settings-cancel">Close</button>
+        <button id="settings-save" class="primary">Save</button>
       </div>
     </div>
   </div>
