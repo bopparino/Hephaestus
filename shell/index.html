@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hephaestus</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div id="brand">
+        <div class="brand-greek">ΗΦΑΙΣΤΟΣ</div>
+        <div class="brand-latin">HEPHAESTUS</div>
+      </div>
+      <div id="searchbox">
+        <input id="search" type="text" placeholder="search the transcripts…" autocomplete="off" spellcheck="false">
+      </div>
+      <button id="new-chat" class="ghost-btn">+ new chat</button>
+      <nav id="sessions"></nav>
+      <footer id="side-footer">
+        <div class="footer-row">
+          <button class="nav-btn" data-view="memory">memory</button>
+          <button class="nav-btn" data-view="receipts">receipts</button>
+        </div>
+        <select id="skin-select" title="skin"></select>
+        <div id="conn" class="conn">connecting…</div>
+      </footer>
+    </aside>
+
+    <main id="main">
+      <header id="main-head">
+        <div id="head-title">—</div>
+        <div id="head-chips"></div>
+      </header>
+      <section id="view"></section>
+      <div id="composer">
+        <div id="chips"></div>
+        <div id="composer-row">
+          <select id="automaton" title="automaton">
+            <option value="chat">chat</option>
+            <option value="dev">dev</option>
+          </select>
+          <textarea id="input" rows="2" placeholder="speak to the forge — @ to reference a project or session" spellcheck="false"></textarea>
+          <button id="send">send</button>
+        </div>
+        <div id="at-popup" class="hidden"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="modal-backdrop" class="hidden">
+    <div id="approval-modal">
+      <div class="modal-title">⚠ approval needed</div>
+      <div id="approval-tool" class="modal-tool"></div>
+      <pre id="approval-summary"></pre>
+      <div class="modal-actions">
+        <button data-decision="allow-once">once</button>
+        <button data-decision="allow-session">session</button>
+        <button data-decision="allow-always">always</button>
+        <button data-decision="deny" class="deny">deny</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

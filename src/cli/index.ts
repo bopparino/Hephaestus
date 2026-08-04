@@ -393,6 +393,14 @@ async function main(): Promise<void> {
     case 'receipts':
       await cmdReceipts();
       break;
+    case 'ui': {
+      const state = await ensureDaemon();
+      const url = `http://127.0.0.1:${state.port}/#${loadToken()}`;
+      const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      spawn(opener, [url], { detached: true, stdio: 'ignore' }).unref();
+      console.log(`shell: ${url.split('#')[0]} (token in fragment)`);
+      break;
+    }
     case 'skills':
       await withClient(async (client, skin) => {
         const accent = fg(skin.palette.accent);
@@ -403,7 +411,7 @@ async function main(): Promise<void> {
       });
       break;
     default:
-      console.log('usage: heph [chat [-m msg] | dev [-C root] [--allow] "task" | receipts | skills | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
+      console.log('usage: heph [chat [-m msg] [--project <p>] | dev [-C root] [--allow] "task" | ui | project [add] | receipts | skills | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
       process.exitCode = 1;
   }
 }

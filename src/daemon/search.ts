@@ -41,6 +41,20 @@ export function sanitizeFtsQuery(input: string): string | null {
   return parts.length ? parts.join(' OR ') : null;
 }
 
+/** Opening + closing bookends of one session — the cheap way to hand a
+ *  referenced conversation to the model without paying for its transcript. */
+export function sessionBookends(sessionId: number): { title: string | null; opening: MessageRow[]; closing: MessageRow[] } {
+  const db = getDb();
+  const session = db.prepare('SELECT title FROM sessions WHERE id = ?').get(sessionId) as { title: string | null } | undefined;
+  const opening = db.prepare(
+    "SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? AND role IN ('user','assistant') ORDER BY id LIMIT 3",
+  ).all(sessionId) as MessageRow[];
+  const closing = (db.prepare(
+    "SELECT * FROM (SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? AND role IN ('user','assistant') ORDER BY id DESC LIMIT 3) ORDER BY id",
+  ).all(sessionId) as MessageRow[]).filter(m => !opening.some(o => o.id === m.id));
+  return { title: session?.title ?? null, opening, closing };
+}
+
 export function searchMessages(query: string, limit = 5): SearchHit[] {
   const db = getDb();
   const q = sanitizeFtsQuery(query);
