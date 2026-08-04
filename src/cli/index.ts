@@ -202,6 +202,73 @@ async function cmdInfo(): Promise<void> {
   });
 }
 
+async function cmdMemory(args: string[]): Promise<void> {
+  await withClient(async (client, skin) => {
+    const accent = fg(skin.palette.accent);
+    const muted = fg(skin.palette.fgMuted);
+    const [sub, ...rest] = args;
+
+    if (sub === 'save') {
+      const text = rest.join(' ').trim();
+      if (!text) throw new Error('usage: heph memory save "<fact>"');
+      const { id } = await client.request<{ id: number }>('memory.save', { content: text });
+      console.log(`${muted}saved #${id}${RESET}`);
+      return;
+    }
+    if (sub === 'forget') {
+      const id = Number(rest[0]);
+      if (!Number.isInteger(id)) throw new Error('usage: heph memory forget <id>');
+      await client.request('memory.forget', { id });
+      console.log(`${muted}#${id} deactivated (soft — nothing is ever deleted)${RESET}`);
+      return;
+    }
+
+    interface FactRow { id: number; scope: string; category: string; content: string; importance: number; core: number; updated_at: string }
+    const { budget, coreUsed, facts } = await client.request<{ budget: number; coreUsed: number; facts: FactRow[] }>('memory.list');
+    const core = facts.filter(f => f.core);
+    const deep = facts.filter(f => !f.core);
+    console.log(`${accent}MEMORY CORE${RESET} ${muted}[${Math.round((coreUsed / budget) * 100)}% — ${coreUsed}/${budget} chars]${RESET}`);
+    for (const f of core) console.log(`  ${accent}#${f.id}${RESET} ${f.content}`);
+    if (!core.length) console.log(`  ${muted}(empty — the capture pass promotes what earns the budget)${RESET}`);
+    console.log(`\n${accent}DEEP MEMORY${RESET} ${muted}(${deep.length} shown, newest/heaviest first)${RESET}`);
+    for (const f of deep.slice(0, 25)) {
+      console.log(`  ${muted}#${f.id} [${f.category}·i${f.importance}]${RESET} ${f.content}`);
+    }
+  });
+}
+
+async function cmdSearch(query: string): Promise<void> {
+  await withClient(async (client, skin) => {
+    const accent = fg(skin.palette.accent);
+    const muted = fg(skin.palette.fgMuted);
+    interface Hit { sessionId: number; title: string | null; opening: { role: string; content: string }[]; window: { role: string; content: string }[]; closing: { role: string; content: string }[] }
+    const hits = await client.request<Hit[]>('search.messages', { query });
+    if (!hits.length) {
+      console.log(`${muted}nothing in the transcripts — note: this is evidence about past conversations, not the world${RESET}`);
+      return;
+    }
+    for (const hit of hits) {
+      console.log(`\n${accent}session ${hit.sessionId}${RESET} ${muted}${hit.title ?? ''}${RESET}`);
+      const line = (m: { role: string; content: string }) =>
+        console.log(`  ${muted}${m.role === 'user' ? '❯' : '⏵'}${RESET} ${m.content.slice(0, 110).replaceAll('\n', ' ')}`);
+      hit.opening.forEach(line);
+      if (hit.opening.length) console.log(`  ${muted}⋯${RESET}`);
+      hit.window.forEach(line);
+      if (hit.closing.length) console.log(`  ${muted}⋯${RESET}`);
+      hit.closing.forEach(line);
+    }
+  });
+}
+
+async function cmdNightly(): Promise<void> {
+  await withClient(async (client, skin) => {
+    const muted = fg(skin.palette.fgMuted);
+    console.log(`${muted}running the nightly pass (folding, consolidation, embeddings, backup)…${RESET}`);
+    const summary = await client.request('maintenance.run');
+    console.log(JSON.stringify(summary, null, 2));
+  });
+}
+
 // ---- main -------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -222,8 +289,18 @@ async function main(): Promise<void> {
     case 'info':
       await cmdInfo();
       break;
+    case 'memory':
+      await cmdMemory(rest);
+      break;
+    case 'search':
+      if (!rest.length) throw new Error('usage: heph search <query>');
+      await cmdSearch(rest.join(' '));
+      break;
+    case 'nightly':
+      await cmdNightly();
+      break;
     default:
-      console.log('usage: heph [chat [-m msg] | daemon | skins | info]');
+      console.log('usage: heph [chat [-m msg] | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
       process.exitCode = 1;
   }
 }

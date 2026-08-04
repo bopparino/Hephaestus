@@ -37,6 +37,61 @@ const MIGRATIONS: string[] = [
     detail TEXT NOT NULL
   );
   `,
+  // v2 — Phase 1: the memory transplant. Facts (tier 1 core flag + tier 2
+  // deep store), episodes (folding), FTS everywhere (AFTER UPDATE OF —
+  // narrow triggers, the Hermes lesson), soft-delete only.
+  `
+  CREATE TABLE IF NOT EXISTS facts (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    scope TEXT NOT NULL DEFAULT 'global',
+    category TEXT NOT NULL DEFAULT 'general',
+    content TEXT NOT NULL,
+    importance INTEGER NOT NULL DEFAULT 5,
+    salience REAL,
+    core INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'capture',
+    source_session INTEGER,
+    embedding BLOB
+  );
+  CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(content, content='facts', content_rowid='id');
+  CREATE TRIGGER IF NOT EXISTS facts_fts_ai AFTER INSERT ON facts BEGIN
+    INSERT INTO facts_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+  CREATE TRIGGER IF NOT EXISTS facts_fts_ad AFTER DELETE ON facts BEGIN
+    INSERT INTO facts_fts(facts_fts, rowid, content) VALUES ('delete', old.id, old.content);
+  END;
+  CREATE TRIGGER IF NOT EXISTS facts_fts_au AFTER UPDATE OF content ON facts BEGIN
+    INSERT INTO facts_fts(facts_fts, rowid, content) VALUES ('delete', old.id, old.content);
+    INSERT INTO facts_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+
+  CREATE TABLE IF NOT EXISTS episodes (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    session_id INTEGER,
+    started_at TEXT,
+    ended_at TEXT,
+    summary TEXT NOT NULL,
+    salience REAL,
+    first_message_id INTEGER,
+    last_message_id INTEGER,
+    embedding BLOB
+  );
+  CREATE VIRTUAL TABLE IF NOT EXISTS episodes_fts USING fts5(summary, content='episodes', content_rowid='id');
+  CREATE TRIGGER IF NOT EXISTS episodes_fts_ai AFTER INSERT ON episodes BEGIN
+    INSERT INTO episodes_fts(rowid, summary) VALUES (new.id, new.summary);
+  END;
+
+  ALTER TABLE messages ADD COLUMN summarized INTEGER NOT NULL DEFAULT 0;
+  CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(content, content='messages', content_rowid='id');
+  CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+  END;
+  INSERT INTO messages_fts(rowid, content) SELECT id, content FROM messages;
+  `,
 ];
 
 let db: Database.Database | null = null;

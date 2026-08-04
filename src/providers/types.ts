@@ -15,6 +15,9 @@ export type StreamEvent =
 export interface ChatOptions {
   maxTokens?: number;
   temperature?: number;
+  /** false disables reasoning where supported — the utility lane's setting:
+   *  thinking models can burn the whole budget reasoning and emit nothing. */
+  think?: boolean;
   signal?: AbortSignal;
 }
 

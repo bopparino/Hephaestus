@@ -10,6 +10,13 @@ export interface Config {
     anthropic: { modelDefault: string };
   };
   ui: { skinDark: string; skinLight: string };
+  user: { name: string };
+  memory: {
+    captureEvery: number;   // user turns between capture∘curate passes
+    recentWindow: number;   // verbatim messages in the prompt
+    foldChunk: number;      // messages folded into one episode
+    coreBudget: number;     // chars — the always-visible tier-1 budget
+  };
 }
 
 const DEFAULTS: Config = {
@@ -27,6 +34,8 @@ const DEFAULTS: Config = {
     anthropic: { modelDefault: 'claude-sonnet-5' },
   },
   ui: { skinDark: 'forge', skinLight: 'daybreak' },
+  user: { name: 'the user' },
+  memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200 },
 };
 
 const DEFAULT_TOML = `# Hephaestus — ~/.hephaestus/config.toml
@@ -72,5 +81,10 @@ export function loadConfig(): Config {
   }
   if (typeof raw.ui?.skin_dark === 'string') cfg.ui.skinDark = raw.ui.skin_dark;
   if (typeof raw.ui?.skin_light === 'string') cfg.ui.skinLight = raw.ui.skin_light;
+  if (typeof raw.user?.name === 'string') cfg.user.name = raw.user.name;
+  if (typeof raw.memory?.capture_every === 'number') cfg.memory.captureEvery = raw.memory.capture_every;
+  if (typeof raw.memory?.recent_window === 'number') cfg.memory.recentWindow = raw.memory.recent_window;
+  if (typeof raw.memory?.fold_chunk === 'number') cfg.memory.foldChunk = raw.memory.fold_chunk;
+  if (typeof raw.memory?.core_budget === 'number') cfg.memory.coreBudget = raw.memory.core_budget;
   return cfg;
 }

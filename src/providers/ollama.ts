@@ -75,6 +75,7 @@ export class OllamaAdapter implements ProviderAdapter {
             messages,
             stream: true,
             keep_alive: '30m',
+            ...(opts.think === false ? { think: false } : {}),
             options: {
               num_ctx: numCtx,
               // Reply length can never be allowed to eat the window.
