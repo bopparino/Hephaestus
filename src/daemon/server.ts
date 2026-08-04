@@ -22,7 +22,7 @@ import { webAvailable, WEB_TOOLS } from './web.js';
 import { TOOLS, type BuiltinTool, type ToolContext } from './tools.js';
 import type { ToolCall } from '../providers/types.js';
 import { addJob, listJobs, getJob, removeJob, claimDue, recordRun, type Job } from './jobs.js';
-import { deliverToOwner } from './channels/telegram.js';
+import { deliverToOwner, startTelegram, channelStatus } from './channels/telegram.js';
 import { listReceipts, runAgent } from './agent.js';
 import { listSkills, readSkill } from './skills-lib.js';
 import { PermissionBroker } from './permissions.js';
@@ -280,6 +280,7 @@ export class Hephd {
             webKey: webAvailable() || undefined,
             telegramToken: !!getSecret('TELEGRAM_BOT_TOKEN') || undefined,
             telegramOwner: this.cfg.channels.telegram.ownerId,
+            telegramLive: channelStatus(),
             mcpServers: Object.keys(this.cfg.mcp.servers),
           },
         };
@@ -302,6 +303,10 @@ export class Hephd {
         const channels = p.channels as { telegramOwner?: unknown } | undefined;
         if (typeof channels?.telegramOwner === 'string') {
           this.cfg.channels.telegram.ownerId = channels.telegramOwner.trim() || null;
+          // owner landing second is the common path — hot-start here too
+          if (this.cfg.channels.telegram.ownerId && !channelStatus().running) {
+            startTelegram(this.cfg, this);
+          }
         }
         const perms = p.permissions as { mode?: unknown } | undefined;
         if (perms?.mode === 'ask' || perms?.mode === 'auto' || perms?.mode === 'bypass') {
@@ -431,9 +436,19 @@ export class Hephd {
         lines.push(`${name}=${value}`);
         writeFileSync(paths.secrets, lines.join('\n') + '\n', { mode: 0o600 });
         receipt('secret_set', { name }); // name only — never the value
-        const note = name === 'TELEGRAM_BOT_TOKEN'
-          ? 'telegram connects on next daemon restart (heph restart)'
-          : name === 'OLLAMA_API_KEY' ? 'web tools light up on the next dev run' : undefined;
+        let note: string | undefined;
+        if (name === 'TELEGRAM_BOT_TOKEN') {
+          // Hot-start — the restart ritual cost a night of dead chat once.
+          if (this.cfg.channels.telegram.ownerId) {
+            note = startTelegram(this.cfg, this)
+              ? 'telegram channel starting — message your bot to test it'
+              : 'token saved — channel could not start (see daemon log)';
+          } else {
+            note = 'token saved — add your numeric user id below and the channel starts';
+          }
+        } else if (name === 'OLLAMA_API_KEY') {
+          note = 'web tools light up on the next exchange';
+        }
         return { ok: true, ...(note ? { note } : {}) };
       }
 

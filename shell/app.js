@@ -1273,8 +1273,13 @@ async function buildConnectors(container, rerender) {
     block('Anthropic', cfg.connections.anthropicKey ? 'keyed' : 'not set', !!cfg.connections.anthropicKey,
       'Optional second provider — frontier models for any lane, picked in Settings.',
       cfg.connections.anthropicKey ? '' : keyfield('ANTHROPIC_API_KEY', 'paste an Anthropic API key (optional)')) +
-    block('Telegram', cfg.connections.telegramToken ? (cfg.connections.telegramOwner ? `linked · owner ${esc(String(cfg.connections.telegramOwner))}` : 'token set — owner missing') : 'not configured',
-      !!(cfg.connections.telegramToken && cfg.connections.telegramOwner),
+    block('Telegram',
+      cfg.connections.telegramLive?.running
+        ? `running as @${esc(cfg.connections.telegramLive.username ?? 'bot')}`
+        : cfg.connections.telegramToken
+          ? (cfg.connections.telegramOwner ? 'configured — channel down (see daemon log)' : 'token set — owner missing')
+          : 'not configured',
+      !!cfg.connections.telegramLive?.running,
       'Your workspace in your pocket. Make a bot with @BotFather, paste its token, then your numeric Telegram user id — it answers you and no one else.',
       (cfg.connections.telegramToken ? '' : keyfield('TELEGRAM_BOT_TOKEN', 'paste the bot token from @BotFather')) +
       `<div class="keyfield" data-owner="1" style="margin-top:6px">

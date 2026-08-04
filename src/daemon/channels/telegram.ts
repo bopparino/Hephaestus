@@ -14,6 +14,13 @@ const SESSION_KEY = 'telegram_session';
 // Held for proactive delivery (heartbeat jobs) — set by startTelegram.
 let activeBot: Bot | null = null;
 let activeOwner: string | null = null;
+let activeUsername: string | null = null;
+
+/** LIVE channel state — what the connectors page shows. Presence of a
+ *  token is configuration; this is truth. */
+export function channelStatus(): { running: boolean; username: string | null } {
+  return { running: activeBot !== null, username: activeUsername };
+}
 
 /** Deliver a proactive message to the owner. False = not configured or send
  *  failed — the caller decides what "undelivered" means (usually: stored). */
@@ -30,6 +37,7 @@ export async function deliverToOwner(text: string): Promise<boolean> {
 }
 
 export function startTelegram(cfg: Config, daemon: Hephd): Bot | null {
+  if (activeBot) return activeBot; // one channel, one poller — never double
   const token = getSecret('TELEGRAM_BOT_TOKEN');
   if (!token) return null; // not configured — the channel simply doesn't exist
   const ownerId = cfg.channels.telegram.ownerId;
@@ -67,6 +75,9 @@ export function startTelegram(cfg: Config, daemon: Hephd): Bot | null {
 
   bot.on('message:text', async ctx => {
     if (!ownerOnly(ctx.from?.id)) {
+      // Silent to the sender by design — LOUD in the log, because a wrong
+      // owner id looks exactly like a dead bot from the owner's side.
+      console.error(`[telegram] denied message from ${ctx.from?.id} (owner is ${activeOwner ?? 'unset'})`);
       receipt('channel_denied', { channel: 'telegram', from: ctx.from?.id });
       return;
     }
@@ -95,7 +106,19 @@ export function startTelegram(cfg: Config, daemon: Hephd): Bot | null {
     await ctx.reply("(I can only read text on this channel for now)").catch(() => {});
   });
 
-  void bot.start({ onStart: info => console.error(`[telegram] connected as @${info.username}`) });
+  void bot.start({
+    onStart: info => {
+      activeUsername = info.username;
+      console.error(`[telegram] connected as @${info.username}`);
+    },
+  }).catch(err => {
+    // 401 bad token, 409 another consumer — the channel is DOWN and the
+    // status must say so, not sit in a zombie "configured" state.
+    console.error('[telegram] polling died:', err instanceof Error ? err.message : err);
+    receipt('channel_error', { channel: 'telegram', error: String(err).slice(0, 200) });
+    activeBot = null;
+    activeUsername = null;
+  });
   return bot;
 }
 
