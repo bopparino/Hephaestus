@@ -1,0 +1,37 @@
+# Maintainer: Austin Cantrell
+# Hephaestus desktop (the glass). The engine installs via install.sh / npm.
+# AUR-style source build: cargo compiles the Tauri wrapper.
+
+pkgname=hephaestus-desktop-git
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="Hephaestus — a local-first AI workspace with a real memory (desktop shell)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/bopparino/Hephaestus"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3')
+makedepends=('git' 'rust' 'cargo')
+optdepends=('nodejs: the engine (hephd) — install via install.sh')
+source=("git+https://github.com/bopparino/Hephaestus.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd Hephaestus
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd Hephaestus/desktop/src-tauri
+  cargo build --release --locked
+}
+
+package() {
+  cd Hephaestus
+  install -Dm755 desktop/src-tauri/target/release/hephaestus-desktop \
+    "$pkgdir/usr/bin/hephaestus-desktop"
+  install -Dm644 packaging/linux/hephaestus.desktop \
+    "$pkgdir/usr/share/applications/hephaestus.desktop"
+  install -Dm644 desktop/src-tauri/icons/128x128.png \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/hephaestus.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

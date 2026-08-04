@@ -1,6 +1,6 @@
 {
-  "name": "hephaestus",
-  "version": "0.0.1",
+  "name": "@bopparino/hephaestus",
+  "version": "0.3.0",
   "description": "A local-first AI workspace with a real memory.",
   "type": "module",
   "license": "MIT",
@@ -28,5 +28,19 @@
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "shell",
+    "skins",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bopparino/Hephaestus.git"
   }
 }

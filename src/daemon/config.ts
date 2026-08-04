@@ -22,6 +22,13 @@ export interface Config {
   mcp: {
     servers: Record<string, { command: string; args: string[] }>;
   };
+  // Voice is chrome, not craft: this colors CHAT ONLY. It is injected into
+  // the chat automaton's identity and nowhere else — never the dev or
+  // governance charters, never work products.
+  voice: {
+    tone: string;   // plain | warm | dry
+    notes: string;  // freeform: how the workspace should sound in conversation
+  };
 }
 
 const DEFAULTS: Config = {
@@ -43,6 +50,7 @@ const DEFAULTS: Config = {
   channels: { telegram: { ownerId: null } },
   memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200, compactThreshold: 16000 },
   mcp: { servers: {} },
+  voice: { tone: 'plain', notes: '' },
 };
 
 const DEFAULT_TOML = `# Hephaestus — ~/.hephaestus/config.toml
@@ -103,6 +111,11 @@ ${cfg.channels.telegram.ownerId ? `
 [channels.telegram]
 owner_id = ${JSON.stringify(cfg.channels.telegram.ownerId)}
 ` : ''}
+[voice]
+# Chat register only — work products always stay neutral (voice is chrome).
+tone = ${JSON.stringify(cfg.voice.tone)}
+notes = ${JSON.stringify(cfg.voice.notes)}
+
 [memory]
 capture_every = ${cfg.memory.captureEvery}
 recent_window = ${cfg.memory.recentWindow}
@@ -145,6 +158,9 @@ export function loadConfig(): Config {
   if (typeof raw.memory?.fold_chunk === 'number') cfg.memory.foldChunk = raw.memory.fold_chunk;
   if (typeof raw.memory?.core_budget === 'number') cfg.memory.coreBudget = raw.memory.core_budget;
   if (typeof raw.memory?.compact_threshold === 'number') cfg.memory.compactThreshold = raw.memory.compact_threshold;
+  const voice = raw.voice as { tone?: unknown; notes?: unknown } | undefined;
+  if (typeof voice?.tone === 'string') cfg.voice.tone = voice.tone;
+  if (typeof voice?.notes === 'string') cfg.voice.notes = voice.notes;
   // [mcp.servers.<name>] command = "npx", args = ["-y", "@scope/server", ...]
   const mcpServers = (raw.mcp as { servers?: Record<string, { command?: unknown; args?: unknown }> } | undefined)?.servers ?? {};
   for (const [name, entry] of Object.entries(mcpServers)) {

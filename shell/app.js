@@ -43,6 +43,10 @@ function connect() {
     await refreshSessions();
     await loadModels();
     renderCounts();
+    try {
+      const { done } = await rpc('setup.status');
+      if (!done) showSetup();
+    } catch { /* older daemon */ }
   };
   ws.onclose = () => { setConn('relinking…', 'bad'); setTimeout(connect, 1500); };
   ws.onmessage = e => {
@@ -94,6 +98,11 @@ function onEvent(event, p) {
     $('overlay').dataset.approvalId = p.approvalId;
   } else if (event === 'skin.changed') {
     applySkin(p.skin);
+  } else if (event === 'delegate.done') {
+    // a background sub-run finished — its result is a new message in the
+    // parent session; refresh if we're looking at it
+    if (state.view === 'chat' && state.sessionId === p.sessionId && !state.busy) openSession(p.sessionId);
+    else refreshSessions();
   }
 }
 
@@ -119,7 +128,8 @@ const TOKEN_KEYS = ['--paper', '--paper-raised', '--paper-sunken', '--rail', '--
   '--stone', '--stone-strong', '--stone-active', '--hairline', '--hairline-soft',
   '--hairline-rail', '--hairline-strong', '--window-border', '--separator',
   '--ink', '--ink-2', '--ink-3', '--ink-4', '--ink-5', '--ink-placeholder', '--ink-muted',
-  '--oxblood', '--oxblood-hover', '--on-oxblood'];
+  '--oxblood', '--oxblood-hover', '--on-oxblood',
+  '--seg-active', '--focus-border', '--send-disabled', '--scrim'];
 
 function applySkin(skin) {
   const root = document.documentElement.style;
@@ -138,6 +148,10 @@ function applySkin(skin) {
     '--ink-5': p.fgMuted, '--ink-placeholder': p.fgMuted, '--ink-muted': p.fgMuted,
     '--oxblood': p.accent, '--oxblood-hover': p.accentAlt,
     '--on-oxblood': skin.resolved?.fgOnAccent ?? '#F7F5F0',
+    // Derived states re-derive from the skin, never from marble's hexes —
+    // a light chip under light ink was the bug this section exists for.
+    '--seg-active': p.border, '--focus-border': p.fgMuted,
+    '--send-disabled': p.border, '--scrim': 'rgba(0, 0, 0, .45)',
   };
   for (const [k, v] of Object.entries(map)) root.setProperty(k, v);
 }
@@ -717,6 +731,119 @@ async function showArtifacts() {
   }
 }
 
+// ---- connectors & setup ---------------------------------------------------
+
+async function saveSecret(name, input, noteEl, rerender) {
+  const value = input.value.trim();
+  if (!value) return;
+  try {
+    const result = await rpc('secrets.set', { name, value });
+    input.value = '';
+    noteEl.textContent = result.note ?? 'saved';
+    setTimeout(rerender, 1200);
+  } catch (err) { noteEl.textContent = err.message; }
+}
+
+/** One renderer for the Connectors tab and the setup page's wiring section. */
+async function buildConnectors(container, rerender) {
+  const cfg = await rpc('config.get');
+  let mcp = { servers: [], web: false };
+  try { mcp = await rpc('mcp.status'); } catch { /* older daemon */ }
+  let modelCount = 0;
+  try { modelCount = (await rpc('models.list')).models.filter(m => m.provider === 'ollama').length; } catch { /* dark */ }
+
+  const block = (name, status, ok, hintHtml, fieldHtml = '') => `
+    <div class="connector">
+      <div class="connector__head">
+        <span class="connector__name">${name}</span>
+        <span class="connector__status ${ok ? 'ok' : 'dark'}">${status}</span>
+      </div>
+      <div class="connector__hint">${hintHtml}</div>
+      ${fieldHtml}
+      <div class="keyfield__note"></div>
+    </div>`;
+
+  const keyfield = (secret, placeholder) => `
+    <div class="keyfield" data-secret="${secret}">
+      <input type="password" placeholder="${placeholder}" autocomplete="off">
+      <button>Save</button>
+    </div>`;
+
+  container.innerHTML =
+    block('Ollama engine', modelCount ? `linked · ${modelCount} models` : 'unreachable', modelCount > 0,
+      `Local and cloud models via <code>${esc(cfg.connections.ollamaUrl)}</code>. The chat, agent, utility, and embedding lanes all bind here by default.`) +
+    block('Web search', cfg.connections.webKey ? 'keyed' : 'dark', !!cfg.connections.webKey,
+      'Gives both automata <code>web_search</code> and <code>web_fetch</code>. Mint a key at ollama.com → Settings → API Keys.',
+      cfg.connections.webKey ? '' : keyfield('OLLAMA_API_KEY', 'paste your ollama.com API key')) +
+    block('Anthropic', cfg.connections.anthropicKey ? 'keyed' : 'not set', !!cfg.connections.anthropicKey,
+      'Optional second provider — frontier models for any lane, picked in Settings.',
+      cfg.connections.anthropicKey ? '' : keyfield('ANTHROPIC_API_KEY', 'paste an Anthropic API key (optional)')) +
+    block('Telegram', cfg.connections.telegramToken ? (cfg.connections.telegramOwner ? `linked · owner ${esc(String(cfg.connections.telegramOwner))}` : 'token set — owner missing') : 'not configured',
+      !!(cfg.connections.telegramToken && cfg.connections.telegramOwner),
+      'Your workspace in your pocket. Make a bot with @BotFather, paste its token, then your numeric Telegram user id — it answers you and no one else.',
+      (cfg.connections.telegramToken ? '' : keyfield('TELEGRAM_BOT_TOKEN', 'paste the bot token from @BotFather')) +
+      `<div class="keyfield" data-owner="1" style="margin-top:6px">
+        <input type="text" placeholder="your numeric telegram user id" value="${esc(String(cfg.connections.telegramOwner ?? ''))}" autocomplete="off">
+        <button>Save</button>
+      </div>`) +
+    block('MCP servers', mcp.servers.length ? `${mcp.servers.length} connected` : 'none', mcp.servers.length > 0,
+      mcp.servers.length
+        ? mcp.servers.map(s => `<code>${esc(s.server)}</code> — ${s.tools} tools`).join(' · ')
+        : 'External tool servers. Add one under <code>[mcp.servers.&lt;name&gt;]</code> in <code>~/.hephaestus/config.toml</code> (command + args), then restart. Every call still passes the permission broker.');
+
+  container.querySelectorAll('.keyfield[data-secret]').forEach(field => {
+    const noteEl = field.parentElement.querySelector('.keyfield__note');
+    field.querySelector('button').onclick = () =>
+      saveSecret(field.dataset.secret, field.querySelector('input'), noteEl, rerender);
+  });
+  const ownerField = container.querySelector('.keyfield[data-owner]');
+  if (ownerField) {
+    ownerField.querySelector('button').onclick = async () => {
+      await rpc('config.set', { channels: { telegramOwner: ownerField.querySelector('input').value } });
+      ownerField.parentElement.querySelector('.keyfield__note').textContent = 'owner saved';
+      setTimeout(rerender, 1000);
+    };
+  }
+}
+
+async function showConnectors() {
+  state.view = 'connectors'; setCrumb('connectors', null);
+  $('view').innerHTML = `<div class="column">
+    <div class="section-head"><span class="section-head__label">CONNECTORS — WHAT THE WORKSHOP IS WIRED TO</span></div>
+    <div id="connector-list"></div></div>`;
+  await buildConnectors($('connector-list'), showConnectors);
+}
+
+async function showSetup() {
+  state.view = 'setup'; setCrumb('setup', null);
+  const cfg = await rpc('config.get');
+  $('view').innerHTML = `<div class="column" style="padding-top:14px">
+    <div class="hero__label">SETUP</div>
+    <div class="hero__h" style="font-size:22px">Set up the workshop.</div>
+    <div class="hero__sub" style="margin-bottom:26px">Name yourself, shape the voice, wire the connections. Everything here can be changed later in Settings and Connectors.</div>
+    <div class="section-head"><span class="section-head__label">IDENTITY</span></div>
+    <div class="set-row"><label>Your name</label><input id="su-name" value="${esc(cfg.user.name)}"></div>
+    <div class="set-row"><label>Voice</label>
+      <select id="su-tone">
+        ${['plain', 'warm', 'dry'].map(t => `<option value="${t}"${cfg.voice.tone === t ? ' selected' : ''}>${t}</option>`).join('')}
+      </select></div>
+    <div class="set-row" style="align-items:flex-start"><label style="padding-top:8px">Voice notes</label>
+      <textarea id="su-notes" class="voice-notes" placeholder="How should conversation sound? Colors chat only — code, files, and reports always stay neutral.">${esc(cfg.voice.notes)}</textarea></div>
+    <div class="section-head"><span class="section-head__label">CONNECTIONS</span></div>
+    <div id="setup-connectors"></div>
+    <div class="setup-actions"><button class="send" id="setup-done">Enter the workshop</button></div>
+  </div>`;
+  await buildConnectors($('setup-connectors'), showSetup);
+  $('setup-done').onclick = async () => {
+    await rpc('config.set', {
+      user: { name: $('su-name').value },
+      voice: { tone: $('su-tone').value, notes: $('su-notes').value },
+    });
+    await rpc('setup.complete');
+    newChat();
+  };
+}
+
 // ---- attachments ----------------------------------------------------------
 
 function handleFiles(files) {
@@ -779,6 +906,10 @@ async function openSettings() {
     ${['chat', 'agent', 'utility', 'embed'].map(roleSelect).join('')}
     <div class="set-section">BEHAVIOR</div>
     <div class="set-row"><label>Your name</label><input id="set-name" value="${esc(cfg.user.name)}"></div>
+    <div class="set-row"><label>Voice</label>
+      <select id="set-tone">${['plain', 'warm', 'dry'].map(t => `<option value="${t}"${cfg.voice.tone === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
+    <div class="set-row" style="align-items:flex-start"><label style="padding-top:8px">Voice notes</label>
+      <textarea id="set-notes" class="voice-notes" placeholder="Chat register only — work products stay neutral.">${esc(cfg.voice.notes)}</textarea></div>
     <div class="set-row"><label>Capture every</label><input id="set-capture" type="number" min="2" value="${cfg.memory.captureEvery}"></div>
     <div class="set-row"><label>Core budget</label><input id="set-budget" type="number" min="500" step="100" value="${cfg.memory.coreBudget}"></div>
     <div class="set-section">CONNECTIONS</div>
@@ -796,6 +927,7 @@ async function saveSettings() {
   await rpc('config.set', {
     models,
     user: { name: $('set-name').value },
+    voice: { tone: $('set-tone').value, notes: $('set-notes').value },
     memory: { captureEvery: Number($('set-capture').value), coreBudget: Number($('set-budget').value) },
   });
   await loadModels();
@@ -822,7 +954,8 @@ $('cmd-new').onclick = () => { newChat(); $('input').focus(); };
 $('cmd-search').onclick = openSearch;
 $('switcher').onclick = toggleSwitcherMenu;
 document.querySelectorAll('[data-view]').forEach(btn =>
-  btn.addEventListener('click', () => ({ memory: showMemory, receipts: showReceipts, artifacts: showArtifacts })[btn.dataset.view]()));
+  btn.addEventListener('click', () =>
+    ({ memory: showMemory, receipts: showReceipts, artifacts: showArtifacts, connectors: showConnectors })[btn.dataset.view]()));
 $('open-settings').onclick = openSettings;
 $('settings-cancel').onclick = closeOverlay;
 $('settings-save').onclick = saveSettings;

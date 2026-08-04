@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { paths, getSecret } from './paths.js';
 import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
@@ -196,10 +197,14 @@ export class Hephd {
           models: this.cfg.models,
           user: this.cfg.user,
           memory: this.cfg.memory,
+          voice: this.cfg.voice,
           connections: {
             ollamaUrl: this.cfg.providers.ollama.url,
-            anthropicKey: !!process.env.ANTHROPIC_API_KEY || undefined,
+            anthropicKey: !!getSecret('ANTHROPIC_API_KEY') || undefined,
+            webKey: webAvailable() || undefined,
+            telegramToken: !!getSecret('TELEGRAM_BOT_TOKEN') || undefined,
             telegramOwner: this.cfg.channels.telegram.ownerId,
+            mcpServers: Object.keys(this.cfg.mcp.servers),
           },
         };
 
@@ -215,6 +220,13 @@ export class Hephd {
         const memory = p.memory as Partial<Config['memory']> | undefined;
         if (typeof memory?.captureEvery === 'number' && memory.captureEvery >= 2) this.cfg.memory.captureEvery = Math.floor(memory.captureEvery);
         if (typeof memory?.coreBudget === 'number' && memory.coreBudget >= 500) this.cfg.memory.coreBudget = Math.floor(memory.coreBudget);
+        const voice = p.voice as Partial<Config['voice']> | undefined;
+        if (typeof voice?.tone === 'string' && ['plain', 'warm', 'dry'].includes(voice.tone)) this.cfg.voice.tone = voice.tone;
+        if (typeof voice?.notes === 'string') this.cfg.voice.notes = voice.notes.slice(0, 500);
+        const channels = p.channels as { telegramOwner?: unknown } | undefined;
+        if (typeof channels?.telegramOwner === 'string') {
+          this.cfg.channels.telegram.ownerId = channels.telegramOwner.trim() || null;
+        }
         saveConfig(this.cfg);
         this.providers = new Providers(this.cfg); // rebind lanes immediately
         receipt('config_set', { models: this.cfg.models, user: this.cfg.user.name });
@@ -251,6 +263,37 @@ export class Hephd {
 
       case 'mcp.status':
         return { servers: mcpStatus(), web: webAvailable() };
+
+      case 'setup.status': {
+        const row = getDb().prepare("SELECT value FROM meta WHERE key = 'setup_done'").get();
+        return { done: !!row };
+      }
+
+      case 'setup.complete':
+        getDb().prepare("INSERT INTO meta (key, value) VALUES ('setup_done', '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run();
+        receipt('setup_complete', {});
+        return { ok: true };
+
+      case 'secrets.set': {
+        // The setup page's one write into the secrets file. Allowlisted
+        // names only; the value goes to disk 0600 and is NEVER echoed back
+        // in any RPC — status surfaces say "keyed", nothing more.
+        const ALLOWED = ['OLLAMA_API_KEY', 'ANTHROPIC_API_KEY', 'TELEGRAM_BOT_TOKEN'];
+        const name = String(p.name ?? '');
+        const value = String(p.value ?? '').trim();
+        if (!ALLOWED.includes(name)) throw new Error(`secrets.set allows: ${ALLOWED.join(', ')}`);
+        if (!value || /[\n\r]/.test(value)) throw new Error('secrets.set needs a single-line value');
+        const lines = existsSync(paths.secrets)
+          ? readFileSync(paths.secrets, 'utf8').split('\n').filter(l => l.trim() && !l.startsWith(`${name}=`))
+          : [];
+        lines.push(`${name}=${value}`);
+        writeFileSync(paths.secrets, lines.join('\n') + '\n', { mode: 0o600 });
+        receipt('secret_set', { name }); // name only — never the value
+        const note = name === 'TELEGRAM_BOT_TOKEN'
+          ? 'telegram connects on next daemon restart (heph restart)'
+          : name === 'OLLAMA_API_KEY' ? 'web tools light up on the next dev run' : undefined;
+        return { ok: true, ...(note ? { note } : {}) };
+      }
 
       case 'artifacts.list': {
         const rows = getDb()
@@ -396,6 +439,7 @@ export class Hephd {
               onTool: (name, summary, ms, ok, result) =>
                 this.send(ws, { event: 'agent.tool', params: { reqId: req.id, name, summary, ms, ok, result } }),
               ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq } }),
+              notify: (event, params) => this.broadcast(event, params),
             },
           ).then(result => ({ sessionId, ...result })),
         );
@@ -500,14 +544,20 @@ export class Hephd {
     return run;
   }
 
-  /** IDENTITY + frozen core snapshot — assembled once per session (dir. #7).
-   *  Core = global + the session's project scope: switching projects
-   *  switches what the brain reaches for. */
+  /** IDENTITY + voice + frozen core snapshot — assembled once per session
+   *  (dir. #7). Core = global + the session's project scope: switching
+   *  projects switches what the brain reaches for. Voice rides HERE and
+   *  only here — the chat lane. Dev/governance charters never see it:
+   *  voice is chrome, not craft. */
   private systemPrompt(sessionId: number): string {
     let snapshot = this.systemSnapshots.get(sessionId);
     if (snapshot === undefined) {
+      const { tone, notes } = this.cfg.voice;
+      const voice = (notes.trim() || tone !== 'plain')
+        ? `\n\n[VOICE — conversational register only. Speak ${tone}.${notes.trim() ? ` ${notes.trim()}` : ''} This colors chat alone: any file, report, commit, or code you produce stays neutral professional register.]`
+        : '';
       const core = renderCore(sessionScope(sessionId), this.cfg.memory.coreBudget);
-      snapshot = core ? `${IDENTITY}\n\n${core}` : IDENTITY;
+      snapshot = (core ? `${IDENTITY}${voice}\n\n${core}` : `${IDENTITY}${voice}`);
       this.systemSnapshots.set(sessionId, snapshot);
     }
     return snapshot;

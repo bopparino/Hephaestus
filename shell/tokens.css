@@ -49,6 +49,16 @@
   --oxblood-hover:    #5E1A17;
   --on-oxblood:       #F7F5F0;
 
+  /* ---------- Derived states ----------
+     The handoff specs these as one-off hex values; they live here as
+     tokens so dark skins can re-derive them. NOTHING in style.css may
+     use a raw color — every value routes through this file, or the
+     skin bridge can't reach it (the dev-segment bug, 2026-08-04). */
+  --seg-active:       #EDE9E0; /* active mode segment fill */
+  --focus-border:     #B9B1A4; /* composer :focus-within */
+  --send-disabled:    #C9B9B7; /* Send while field is empty */
+  --scrim:            rgba(33, 30, 26, .28); /* overlay backdrop */
+
   /* ---------- Type ---------- */
   --font-ui:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;

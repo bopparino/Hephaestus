@@ -1,5 +1,5 @@
 import type { Config } from './config.js';
-import { getDb, receipt, saveMessage, sessionScope } from './db.js';
+import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { maybeCompact } from './compact.js';
 import { renderCore } from './memory.js';
 import { TOOLS, type BuiltinTool, type ToolContext } from './tools.js';
@@ -45,16 +45,29 @@ export interface AgentEvents {
   onDelta(text: string): void;
   onTool(name: string, summary: string, ms: number, ok: boolean, result?: string): void;
   ask: ((req: AskRequest) => void) | null;
+  /** broadcast hook for background-delegation completions */
+  notify?(event: string, params: Record<string, unknown>): void;
 }
+
+const SUB_ITERATION_CAP = 12;
 
 export async function runAgent(
   cfg: Config,
   providers: Providers,
   broker: PermissionBroker,
-  opts: { sessionId: number; root: string; task: string },
+  opts: {
+    sessionId: number; root: string; task: string;
+    /** grants continuity: a sub-run honors the PARENT conversation's
+     *  session grants — the user granted them to this work, not to a row id */
+    grantSessionId?: number;
+    /** delegation depth guard + reduced budget */
+    isSub?: boolean;
+  },
   events: AgentEvents,
 ): Promise<{ text: string; iterations: number; toolCalls: number }> {
-  const { sessionId, root, task } = opts;
+  const { sessionId, root, task, isSub = false } = opts;
+  const grantSessionId = opts.grantSessionId ?? sessionId;
+  const iterationCap = isSub ? SUB_ITERATION_CAP : MAX_ITERATIONS;
   const ctx: ToolContext = { root, sessionId };
 
   const core = renderCore(sessionScope(sessionId), cfg.memory.coreBudget);
@@ -72,11 +85,56 @@ export async function runAgent(
   const toolbox: Record<string, BuiltinTool> = Object.fromEntries(DEV_TOOLS.map(n => [n, TOOLS[n]]));
   if (webAvailable()) Object.assign(toolbox, WEB_TOOLS);
   Object.assign(toolbox, mcpToolbox());
+
+  // Delegation — GAPS §4, one lane, one level deep. The sub-run gets its
+  // own session (isolation: its tool spam never enters this context, only
+  // its final text) but honors THIS conversation's grants — the user
+  // granted them to the work, not to a row id. Every sub-call still faces
+  // the broker individually; asks forward to the same client.
+  if (!isSub) {
+    toolbox.delegate = {
+      risk: 'read', // spawning is safe — each sub-call is gated on its own
+      spec: {
+        name: 'delegate',
+        description: 'Hand a self-contained subtask to a second automaton in its own session. Only its final summary returns to you — use it for large scans or noisy work that would drown your context. background:true returns immediately and the result lands in this conversation later. Subs cannot delegate.',
+        parameters: {
+          type: 'object',
+          properties: {
+            task: { type: 'string', description: 'complete, self-contained instructions — the sub sees nothing else' },
+            background: { type: 'boolean', description: 'run detached; result arrives as a later message in this session' },
+          },
+          required: ['task'],
+        },
+      },
+      async handler(args) {
+        const project = (getDb().prepare('SELECT project FROM sessions WHERE id = ?')
+          .get(sessionId) as { project: string | null } | undefined)?.project ?? null;
+        const subSession = createSession('dev', project);
+        receipt('delegate', { subSession, background: args.background === true }, sessionId);
+        const run = runAgent(cfg, providers, broker,
+          { sessionId: subSession, root, task: String(args.task), grantSessionId, isSub: true },
+          { onDelta: () => {}, onTool: events.onTool, ask: events.ask, notify: events.notify });
+        if (args.background === true) {
+          void run.then(res => {
+            saveMessage(sessionId, 'tool' as never, `[delegate ${subSession} done] ${res.text.slice(0, 2000)}`);
+            receipt('delegate_done', { subSession, iterations: res.iterations, toolCalls: res.toolCalls }, sessionId);
+            events.notify?.('delegate.done', { sessionId, subSession });
+          }).catch(err => {
+            saveMessage(sessionId, 'tool' as never, `[delegate ${subSession} failed] ${String(err).slice(0, 300)}`);
+            events.notify?.('delegate.done', { sessionId, subSession, failed: true });
+          });
+          return `[delegated to session ${subSession} — running in background; the result will land in this conversation]`;
+        }
+        const res = await run;
+        return `[delegate session ${subSession} — ${res.iterations} iterations, ${res.toolCalls} tool calls]\n${res.text}`;
+      },
+    };
+  }
   const specs = Object.values(toolbox).map(t => t.spec);
 
   let totalToolCalls = 0;
   let messagesRef = messages;
-  for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+  for (let iteration = 1; iteration <= iterationCap; iteration++) {
     // Compaction check before each model call — a long run must not drown
     // its own window mid-task. The DB transcript is untouched.
     messagesRef = await maybeCompact(providers, messagesRef, cfg.memory.compactThreshold, sessionId);
@@ -111,7 +169,7 @@ export async function runAgent(
       if (!tool) {
         result = `unknown tool: ${call.name}`;
       } else {
-        const verdict = await broker.check(sessionId, call.name, tool.risk, call.args, events.ask);
+        const verdict = await broker.check(grantSessionId, call.name, tool.risk, call.args, events.ask);
         receipt('tool_call', {
           tool: call.name, allowed: verdict.allowed, via: verdict.via,
           args: JSON.stringify(call.args).slice(0, 400),
@@ -135,10 +193,10 @@ export async function runAgent(
     }
   }
 
-  receipt('agent_run', { iterations: MAX_ITERATIONS, toolCalls: totalToolCalls, root, exhausted: true }, sessionId);
+  receipt('agent_run', { iterations: iterationCap, toolCalls: totalToolCalls, root, exhausted: true }, sessionId);
   const note = '[iteration budget exhausted — stopping here; the work so far is saved]';
   events.onDelta('\n' + note);
-  return { text: note, iterations: MAX_ITERATIONS, toolCalls: totalToolCalls };
+  return { text: note, iterations: iterationCap, toolCalls: totalToolCalls };
 }
 
 function summarize(call: ToolCall): string {

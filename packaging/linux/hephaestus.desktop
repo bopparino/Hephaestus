@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Hephaestus
+Comment=A local-first AI workspace with a real memory
+Exec=hephaestus-desktop
+Icon=hephaestus
+Terminal=false
+Type=Application
+Categories=Development;Utility;

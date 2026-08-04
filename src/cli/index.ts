@@ -333,6 +333,47 @@ async function cmdReceipts(): Promise<void> {
   });
 }
 
+// ---- daemon lifecycle -------------------------------------------------------
+
+const healthz = (): Promise<boolean> =>
+  fetch('http://127.0.0.1:7715/healthz').then(r => r.ok).catch(() => false);
+
+/** Detached daemon — what `heph ui`, the desktop app, and install.sh lean
+ *  on. Idempotent: an already-running daemon is a success. */
+async function startDaemon(): Promise<void> {
+  if (await healthz()) {
+    console.log('daemon already up');
+    return;
+  }
+  const { openSync, mkdirSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  mkdirSync(paths.logs, { recursive: true });
+  const log = openSync(join(paths.logs, 'daemon.log'), 'a');
+  const child = spawn(process.execPath, [fileURLToPath(new URL('../daemon/index.js', import.meta.url))], {
+    detached: true,
+    stdio: ['ignore', log, log],
+  });
+  child.unref();
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 250));
+    if (await healthz()) {
+      console.log('daemon up — heph ui opens the workshop');
+      return;
+    }
+  }
+  throw new Error(`daemon did not come up — see ${paths.logs}/daemon.log`);
+}
+
+function stopDaemon(): void {
+  try {
+    const { pid } = JSON.parse(readFileSync(paths.state, 'utf8')) as { pid: number };
+    process.kill(pid);
+    console.log('daemon stopped');
+  } catch {
+    console.log('no running daemon found');
+  }
+}
+
 // ---- main -------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -341,6 +382,17 @@ async function main(): Promise<void> {
   switch (cmd ?? 'chat') {
     case 'daemon':
       await import('../daemon/index.js'); // foreground, logs to stderr
+      break;
+    case 'start':
+      await startDaemon();
+      break;
+    case 'stop':
+      stopDaemon();
+      break;
+    case 'restart':
+      stopDaemon();
+      await new Promise(r => setTimeout(r, 600));
+      await startDaemon();
       break;
     case 'chat': {
       let project: string | undefined;
