@@ -369,8 +369,17 @@ async function main(): Promise<void> {
     case 'receipts':
       await cmdReceipts();
       break;
+    case 'skills':
+      await withClient(async (client, skin) => {
+        const accent = fg(skin.palette.accent);
+        const muted = fg(skin.palette.fgMuted);
+        const skills = await client.request<{ name: string; description: string }[]>('skills.list');
+        if (!skills.length) console.log(`${muted}(no skills yet — the dev automaton proposes them, or drop SKILL.md dirs in ~/.hephaestus/skills)${RESET}`);
+        for (const s of skills) console.log(`${accent}${s.name}${RESET} — ${s.description}`);
+      });
+      break;
     default:
-      console.log('usage: heph [chat [-m msg] | dev [-C root] [--allow] "task" | receipts | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
+      console.log('usage: heph [chat [-m msg] | dev [-C root] [--allow] "task" | receipts | skills | memory [save|forget] | search <q> | nightly | daemon | skins | info]');
       process.exitCode = 1;
   }
 }

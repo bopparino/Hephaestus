@@ -73,7 +73,7 @@ STRICT RULES — memory integrity depends on these:
 - Write DECLARATIVE facts in a neutral notebook register, in third person: "${name} prefers X", "The cut-sheet project targets Y". NEVER imperative ("Always do X") — imperative entries get re-read as directives later and override live requests.
 - If a fact will be stale in a week, it does not belong in memory.
 - Only record what was actually said or clearly established. Never infer capabilities, tools, or system features — models confabulate capabilities.
-- Procedures, task progress, and completed-work logs are NOT facts — the transcript already has them. Skip them.
+- Procedures, task progress, and completed-work logs are NOT facts — procedures belong in the skills library, the transcript already has the rest. Skip them here.
 - Do NOT re-extract facts already known.
 Categories: "user" (who ${name} is), "project" (ongoing work), "decision" (what was chosen and why — the load-bearing category), "preference" (how ${name} likes things done), "reference" (pointers), "general".
 Rate each: importance 1-10, salience 0-1 (0.1 = trivia, 0.9 = defining).

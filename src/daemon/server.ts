@@ -11,6 +11,7 @@ import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
 import { searchMessages } from './search.js';
 import { listReceipts, runAgent } from './agent.js';
+import { listSkills, readSkill } from './skills-lib.js';
 import { PermissionBroker } from './permissions.js';
 import { Providers } from '../providers/roles.js';
 import { ProviderError } from '../providers/types.js';
@@ -222,6 +223,15 @@ export class Hephd {
       case 'receipts.list':
         return listReceipts(typeof p.limit === 'number' ? p.limit : 30);
 
+      case 'skills.list':
+        return listSkills();
+
+      case 'skills.view': {
+        const doc = readSkill(String(p.name ?? ''));
+        if (doc == null) throw new Error(`no such skill: ${p.name}`);
+        return { name: p.name, content: doc };
+      }
+
       case 'maintenance.run':
         return runNightly(this.cfg, this.providers);
 
@@ -249,7 +259,27 @@ export class Hephd {
     return snapshot;
   }
 
-  private async exchange(ws: WebSocket, reqId: number, sessionId: number, text: string) {
+  /** ws-client wrapper around runExchange — streaming IS delivery here. */
+  private exchange(ws: WebSocket, reqId: number, sessionId: number, text: string) {
+    return this.runExchange(sessionId, text, {
+      onDelta: t => this.send(ws, { event: 'chat.delta', params: { reqId, text: t } }),
+      onDone: usage => this.send(ws, { event: 'chat.done', params: { reqId, sessionId, usage } }),
+    });
+  }
+
+  /** The exchange engine — channel-agnostic. When a `deliver` callback is
+   *  given (Telegram, iMessage…), the assistant message persists ONLY after
+   *  delivery confirms: an outage must not be remembered as something said
+   *  (the GlasHaus delivery-first rule, generalized). */
+  async runExchange(
+    sessionId: number,
+    text: string,
+    sink: {
+      onDelta?: (text: string) => void;
+      onDone?: (usage: Usage) => void;
+      deliver?: (full: string) => Promise<boolean>;
+    },
+  ) {
     // Tier-2 recall renders into the USER band, fenced — the system prompt
     // stays byte-stable for the whole session. DB stores the plain text;
     // the fence exists only at prompt-assembly time.
@@ -282,10 +312,18 @@ export class Hephd {
     for await (const ev of adapter.chat(model, messages)) {
       if (ev.type === 'text') {
         reply += ev.text;
-        this.send(ws, { event: 'chat.delta', params: { reqId, text: ev.text } });
+        sink.onDelta?.(ev.text);
       } else if (ev.type === 'usage') {
         if (ev.input != null) usage.inputTokens = ev.input;
         if (ev.output != null) usage.outputTokens = ev.output;
+      }
+    }
+
+    if (sink.deliver) {
+      const delivered = await sink.deliver(reply).catch(() => false);
+      if (!delivered) {
+        receipt('delivery_failed', { note: 'reply not persisted — outages must not be remembered as things said' }, sessionId);
+        return { sessionId, text: reply, usage, delivered: false };
       }
     }
 
@@ -295,7 +333,7 @@ export class Hephd {
       ms: Date.now() - started, recalled: recallBlock ? recallBlock.split('\n').length - 2 : 0,
       ...usage,
     }, sessionId);
-    this.send(ws, { event: 'chat.done', params: { reqId, sessionId, usage } });
+    sink.onDone?.(usage);
 
     // Background passes — after delivery, never on the reply path (dir. #2).
     // A trivial turn burns no counter (the Hermes gate).
@@ -306,6 +344,6 @@ export class Hephd {
       foldBacklog(this.cfg, this.providers, sessionId).catch(err => console.error('[folding]', err));
     }
 
-    return { sessionId, text: reply, usage };
+    return { sessionId, text: reply, usage, delivered: true };
   }
 }

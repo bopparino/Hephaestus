@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSy
 import { dirname, join, resolve, sep, relative } from 'node:path';
 import type { ToolSpec } from '../providers/types.js';
 import { addFact } from './memory.js';
+import { listSkills, readSkill, saveSkill } from './skills-lib.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -193,6 +194,57 @@ export const TOOLS: Record<string, BuiltinTool> = {
       });
       return `saved fact #${id}`;
     },
+  },
+};
+
+TOOLS.skills_list = {
+  risk: 'read',
+  spec: {
+    name: 'skills_list',
+    description: 'List available skills (saved procedures). Check before starting a multi-step task — a known procedure beats improvisation.',
+    parameters: { type: 'object', properties: {} },
+  },
+  async handler() {
+    const skills = listSkills();
+    return skills.length
+      ? skills.map(s => `${s.name} — ${s.description}`).join('\n')
+      : '(no skills saved yet)';
+  },
+};
+
+TOOLS.skill_view = {
+  risk: 'read',
+  spec: {
+    name: 'skill_view',
+    description: 'Read a skill by name — the full procedure document.',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name'],
+    },
+  },
+  async handler(args) {
+    return readSkill(String(args.name)) ?? `no such skill: ${args.name}`;
+  },
+};
+
+TOOLS.skill_save = {
+  risk: 'write',
+  spec: {
+    name: 'skill_save',
+    description: 'Save a reusable PROCEDURE as a skill (kebab-case name). Procedures only — how to do something worth repeating. Facts belong in memory_save; task progress belongs nowhere (the transcript has it). Updates archive the previous body.',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'kebab-case identifier' },
+        description: { type: 'string', description: 'one line: when to reach for this skill' },
+        body: { type: 'string', description: 'the procedure, markdown' },
+      },
+      required: ['name', 'description', 'body'],
+    },
+  },
+  async handler(args) {
+    return saveSkill(String(args.name), String(args.description), String(args.body));
   },
 };
 

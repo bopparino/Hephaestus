@@ -4,6 +4,7 @@ import { ensureHome, loadToken, paths } from './paths.js';
 import { loadConfig } from './config.js';
 import { getDb } from './db.js';
 import { Hephd } from './server.js';
+import { startTelegram } from './channels/telegram.js';
 import type { DaemonState } from '../shared/protocol.js';
 
 function log(line: string): void {
@@ -45,8 +46,13 @@ async function main(): Promise<void> {
   writeFileSync(paths.state, JSON.stringify(state));
   log(`hephd listening on 127.0.0.1:${port} — the forge is lit`);
 
+  const telegram = startTelegram(cfg, daemon);
+  if (telegram) log('telegram channel up (owner-gated)');
+  else log('telegram channel not configured (TELEGRAM_BOT_TOKEN absent) — skipping');
+
   const shutdown = (signal: string) => {
     log(`${signal} — banking the coals`);
+    void telegram?.stop();
     daemon.close();
     try {
       unlinkSync(paths.state);

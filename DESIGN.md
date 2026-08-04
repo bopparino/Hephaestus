@@ -311,6 +311,17 @@ the permission broker → append results → repeat until text-only. With:
   co-coding is a protocol feature, not an editor plugin — which also
   leaves the door open to an ACP adapter later, letting external editors
   (Zed-class) host the same automaton with zero daemon changes.
+
+**Voice is chrome, not craft.** An automaton may carry a *voice* — a
+conversational register for chat and channels (GlasHaus-warm, dry,
+plain). Voice colors how the workspace talks; it never colors what the
+workspace *makes*. Work products — code, comments, commit messages, file
+contents, reports, proposals — are always neutral professional register,
+indistinguishable from careful human engineering. Enforced structurally,
+not by prompt discipline: voice configuration attaches to the chat
+presentation layer only and never enters an agent-lane system prompt, a
+tool call, or anything written to disk. A coding run must never come out
+sounding like someone else made it.
 - **Governance** — two-phase by tool shape, not prompt: deterministic
   read-only scanners (disk walks, stale files, duplicate hashes, orphan
   packages, fat caches) → model writes the human-quality report → proposal

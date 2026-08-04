@@ -11,14 +11,26 @@ import type { ChatMessage, ToolCall } from '../providers/types.js';
 
 const MAX_ITERATIONS = 15; // model calls per run — a budget, not a hope
 
-const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory_save'];
+const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory_save', 'skills_list', 'skill_view', 'skill_save'];
 
+// Voice is chrome, not craft (DESIGN §7): this charter is locked neutral.
+// No persona, no voice config, ever enters the agent lane — everything an
+// automaton writes must read as careful, anonymous engineering.
 const DEV_CHARTER = (root: string) => `You are Hephaestus's dev automaton — a careful
 software agent working inside the project at: ${root}
 
 Method: read before you write. Reproduce a bug before fixing it. Verify
 after changing (run the tests or the code). Make the smallest change that
 is actually correct. Never invent file contents — read them.
+
+Skills are saved procedures: check skills_list before a multi-step task —
+a known procedure beats improvisation. If completing this task taught a
+reusable procedure (not facts, not what happened — the HOW), save it with
+skill_save.
+
+Everything you write into files — code, comments, commit messages, docs —
+is in neutral professional register: no persona, no flourish, no signature.
+It should be indistinguishable from careful human engineering.
 
 Tools are gated by the user's permission broker; a denied call is the user
 saying no — adjust your approach, don't retry the same call. Recalled

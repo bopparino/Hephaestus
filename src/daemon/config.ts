@@ -11,6 +11,7 @@ export interface Config {
   };
   ui: { skinDark: string; skinLight: string };
   user: { name: string };
+  channels: { telegram: { ownerId: string | null } };
   memory: {
     captureEvery: number;   // user turns between capture∘curate passes
     recentWindow: number;   // verbatim messages in the prompt
@@ -35,6 +36,7 @@ const DEFAULTS: Config = {
   },
   ui: { skinDark: 'forge', skinLight: 'daybreak' },
   user: { name: 'the user' },
+  channels: { telegram: { ownerId: null } },
   memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200 },
 };
 
@@ -82,6 +84,10 @@ export function loadConfig(): Config {
   if (typeof raw.ui?.skin_dark === 'string') cfg.ui.skinDark = raw.ui.skin_dark;
   if (typeof raw.ui?.skin_light === 'string') cfg.ui.skinLight = raw.ui.skin_light;
   if (typeof raw.user?.name === 'string') cfg.user.name = raw.user.name;
+  const rawOwner = raw.channels?.telegram?.owner_id;
+  if (typeof rawOwner === 'string' || typeof rawOwner === 'number') {
+    cfg.channels.telegram.ownerId = String(rawOwner);
+  }
   if (typeof raw.memory?.capture_every === 'number') cfg.memory.captureEvery = raw.memory.capture_every;
   if (typeof raw.memory?.recent_window === 'number') cfg.memory.recentWindow = raw.memory.recent_window;
   if (typeof raw.memory?.fold_chunk === 'number') cfg.memory.foldChunk = raw.memory.fold_chunk;
