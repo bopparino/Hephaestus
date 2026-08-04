@@ -575,6 +575,37 @@ textarea.voice-notes {
 .dirlist button:hover { background: var(--stone); color: var(--ink); }
 .dirlist button.up { color: var(--ink-5); }
 
+/* capabilities */
+.cap-yes { color: var(--ink-3); }
+.cap-no { color: var(--oxblood); }
+
+/* artifact gallery */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.gcard {
+  border: 1px solid var(--hairline); border-radius: var(--r-control);
+  background: var(--paper-raised); overflow: hidden; text-align: left; padding: 0;
+  cursor: pointer;
+}
+.gcard:hover { border-color: var(--hairline-strong); }
+.gcard img { display: block; width: 100%; height: 110px; object-fit: cover; background: var(--paper-sunken); }
+.gcard__meta { padding: 7px 10px; }
+.gcard__name {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gcard__sub { font-family: var(--font-mono); font-size: 10px; color: var(--ink-5); margin-top: 2px; }
+.preview__img {
+  max-width: 100%; border: 1px solid var(--hairline); border-radius: var(--r-control);
+  background: var(--paper-sunken);
+}
+
+/* the imp — pixel-true, quiet, his own corner */
+#imp {
+  display: block; margin: 6px auto 4px;
+  image-rendering: pixelated;
+  opacity: .85;
+}
+
 .hidden { display: none !important; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--stone-strong); border-radius: 4px; }

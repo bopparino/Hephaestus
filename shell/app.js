@@ -834,6 +834,15 @@ function setPlan(on) {
 async function send() {
   const input = $('input');
   let text = input.value.trim();
+  // the imp's summons — a client command, never a model turn
+  const pets = text.match(/^\/pets?\s+(enable|disable|on|off)$/i);
+  if (pets) {
+    const on = /enable|on/i.test(pets[1]);
+    input.value = ''; renderSendState();
+    await rpc('config.set', { ui: { pet: on } });
+    initImp(on);
+    return;
+  }
   if (!text && !state.attachments.length && !state.fileTexts.length) return;
   const target = state.sessionId; // null → a new session is being born
   if (target ? state.inflight.has(target) : state.awaitingSession) return; // that thread is mid-run
@@ -982,6 +991,147 @@ function renderInspector(projectData) {
       ${state.learned.slice(0, 4).map(f => `<div class="insp__text">${esc(f.content.slice(0, 120))}</div>`).join('') || '<div class="insp__note">nothing captured yet</div>'}</div>`;
 }
 
+// ---- the imp --------------------------------------------------------------
+// Drawn in code — no assets, colored by the live skin. Off by default;
+// summoned with /pets enable (or Settings → General). He idles and blinks;
+// when anything is inflight he hammers. He is the whole pets roster.
+
+const IMP_FRAMES = {
+  idleA: [
+    '..#......#..',
+    '..##....##..',
+    '..########..',
+    '.##########.',
+    '.#E######E#.',
+    '.##########.',
+    '..########..',
+    '...######...',
+    '..########..',
+    '.###....###.',
+    '...##..##...',
+    '...#....#...',
+    '..##....##..',
+  ],
+  idleB: [
+    '..#......#..',
+    '..##....##..',
+    '..########..',
+    '.##########.',
+    '.##########.',
+    '.##########.',
+    '..########..',
+    '...######...',
+    '..########..',
+    '.###....###.',
+    '...##..##...',
+    '...#....#...',
+    '..##....##..',
+  ],
+  workA: [
+    '..#......#.H',
+    '..##....##HH',
+    '..########.H',
+    '.##########.',
+    '.#E######E#.',
+    '.##########.',
+    '..########..',
+    '...######.#.',
+    '..########..',
+    '.###....##..',
+    '...##..##...',
+    '...#....#...',
+    '..##....##..',
+  ],
+  workB: [
+    '..#......#..',
+    '..##....##..',
+    '..########..',
+    '.##########.',
+    '.#E######E#.',
+    '.##########.',
+    '..########..',
+    '...######...',
+    '..########..',
+    '.###....###.',
+    '...##..##HH.',
+    '...#....#SH.',
+    '..##...##.S.',
+  ],
+};
+
+let impTimer = null;
+let impTick = 0;
+
+function drawImp(frame) {
+  const canvas = $('imp');
+  const g = canvas.getContext('2d');
+  const css = getComputedStyle(document.documentElement);
+  const colors = {
+    '#': css.getPropertyValue('--ink-4').trim() || '#6B655C',
+    'E': css.getPropertyValue('--oxblood').trim() || '#7A2320',
+    'H': '#D9A441',
+    'S': css.getPropertyValue('--oxblood').trim() || '#E86F2D',
+  };
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  frame.forEach((row, y) => {
+    [...row].forEach((ch, x) => {
+      if (ch === '.') return;
+      g.fillStyle = colors[ch] ?? colors['#'];
+      g.fillRect(x * 3, y * 3, 3, 3);
+    });
+  });
+}
+
+function initImp(enabled) {
+  const canvas = $('imp');
+  canvas.classList.toggle('hidden', !enabled);
+  if (impTimer) { clearInterval(impTimer); impTimer = null; }
+  if (!enabled) return;
+  impTimer = setInterval(() => {
+    impTick++;
+    if (state.inflight.size > 0 || state.awaitingSession) {
+      drawImp(impTick % 2 ? IMP_FRAMES.workA : IMP_FRAMES.workB);
+    } else {
+      // blink roughly every fifth beat
+      drawImp(impTick % 5 === 0 ? IMP_FRAMES.idleB : IMP_FRAMES.idleA);
+    }
+  }, 420);
+}
+
+// ---- capabilities ---------------------------------------------------------
+
+async function showCapabilities() {
+  state.view = 'capabilities'; setCrumb('capabilities', null);
+  const cap = await rpc('capabilities.get');
+  const yes = label => `<span class="cap-yes">${label}</span>`;
+  const no = label => `<span class="cap-no">${label}</span>`;
+  const kv = (k, v) => `<div class="kv"><span>${esc(k)}</span><span class="v">${v}</span></div>`;
+  $('view').innerHTML = `
+    <div class="column">
+      <div class="section-head"><span class="section-head__label">CAPABILITIES — LIVE, NOT ASPIRATIONAL · v${esc(cap.version)}</span></div>
+      <div class="set-section">HANDS</div>
+      ${kv('files', `${cap.hands.files.join(' · ')}`)}
+      ${kv('shell', yes('gated by the broker'))}
+      ${kv('web', cap.hands.web ? yes('web_search · web_fetch') : no('dark — no OLLAMA_API_KEY'))}
+      ${kv('mcp', cap.hands.mcp.length ? yes(cap.hands.mcp.map(s => `${esc(s.server)} (${s.tools})`).join(' · ')) : no('no servers configured'))}
+      ${kv('delegation', yes('one sub-automaton, one level deep'))}
+      <div class="set-section">MIND</div>
+      ${kv('memory', yes(`${cap.memory.facts} facts · ${cap.memory.episodes} episodes · ${cap.memory.coreBudget} char core`))}
+      ${kv('skills', yes(`${cap.skills} saved procedures`))}
+      ${kv('thinking', yes('shown when the model reasons'))}
+      <div class="set-section">MODES</div>
+      ${kv('plan', yes('read-only counsel — writing hands sheathed'))}
+      ${kv('permissions', `<span class="${cap.modes.permission === 'bypass' ? 'cap-no' : 'cap-yes'}">${esc(cap.modes.permission)}</span>`)}
+      ${kv('standing grants', cap.grants.length ? cap.grants.map(g => `${esc(g.tool)}·always`).join(' ') : 'none')}
+      <div class="set-section">REACH</div>
+      ${kv('telegram', cap.channels.telegram ? yes('linked') : no('not configured'))}
+      ${kv('imessage', cap.channels.imessageSkill ? yes('via skill, broker-gated') : no('skill not imported'))}
+      ${kv('scheduled jobs', cap.jobs ? yes(String(cap.jobs)) : 'none')}
+      <div class="set-section">LANES</div>
+      ${Object.entries(cap.models).map(([lane, spec]) => kv(lane, `<span style="font-family:var(--font-mono);font-size:11px">${esc(spec)}</span>`)).join('')}
+    </div>`;
+}
+
 // ---- library views --------------------------------------------------------
 
 async function showMemory() {
@@ -1011,29 +1161,68 @@ async function showReceipts() {
     <div class="receipt-row"><span class="t">${r.id} ${esc(r.created_at.slice(5, 19))}</span> <span class="k">${esc(r.kind)}</span> <span class="t">${esc(r.detail)}</span></div>`).join('')}</div>`;
 }
 
-async function showArtifacts() {
+const IMG_EXT = /\.(png|jpe?g|gif|svg|webp)$/i;
+const artifactUrl = a => `/artifact?id=${a.id}&token=${encodeURIComponent(token)}`;
+
+async function showArtifacts(filter = 'all') {
   state.view = 'artifacts'; setCrumb('artifacts', null);
   const artifacts = await rpc('artifacts.list');
   const view = $('view');
-  if (!artifacts.length) { view.innerHTML = '<div class="empty">Nothing yet — dev runs land their files here.</div>'; return; }
-  view.innerHTML = '<div class="column" id="artifact-rows"></div>';
+  if (!artifacts.length) { view.innerHTML = '<div class="empty">Nothing yet — runs that write files land them here.</div>'; return; }
+  const images = artifacts.filter(a => IMG_EXT.test(a.rel));
+  const files = artifacts.filter(a => !IMG_EXT.test(a.rel));
+  const chip = (key, label, n) =>
+    `<button class="mode__seg" data-f="${key}" aria-pressed="${filter === key}">${label} <span style="opacity:.6">${n}</span></button>`;
+  view.innerHTML = `
+    <div class="column">
+      <div class="mode" style="margin-bottom:16px">
+        ${chip('all', 'All', artifacts.length)}${chip('images', 'Images', images.length)}${chip('files', 'Files', files.length)}
+      </div>
+      ${(filter !== 'files' && images.length) ? `<div class="gallery" id="gallery"></div>` : ''}
+      ${(filter !== 'images' && files.length) ? `<div id="artifact-rows" style="margin-top:${filter !== 'files' && images.length ? '18px' : '0'}"></div>` : ''}
+    </div>`;
+  view.querySelectorAll('[data-f]').forEach(b => b.addEventListener('click', () => showArtifacts(b.dataset.f)));
+
+  const openText = async a => {
+    try {
+      const { content } = await rpc('artifacts.read', { path: a.path });
+      view.innerHTML = `<div class="column preview">
+        <div class="preview__head"><span class="preview__back">‹ Artifacts</span><span class="preview__path">${esc(a.path)}</span></div>
+        <pre></pre></div>`;
+      view.querySelector('pre').textContent = content;
+      view.querySelector('.preview__back').onclick = () => showArtifacts(filter);
+    } catch (err) { view.innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
+  };
+  const openImage = a => {
+    view.innerHTML = `<div class="column preview">
+      <div class="preview__head"><span class="preview__back">‹ Artifacts</span><span class="preview__path">${esc(a.path)}</span></div>
+      <img class="preview__img" src="${artifactUrl(a)}" alt="${esc(a.rel)}"></div>`;
+    view.querySelector('.preview__back').onclick = () => showArtifacts(filter);
+  };
+
+  const gallery = $('gallery');
+  if (gallery) {
+    for (const a of images) {
+      const card = document.createElement('button');
+      card.className = 'gcard';
+      card.innerHTML = `
+        <img src="${artifactUrl(a)}" alt="${esc(a.rel)}" loading="lazy">
+        <div class="gcard__meta"><div class="gcard__name">${esc(a.rel)}</div>
+        <div class="gcard__sub">${esc(a.root.split('/').pop() ?? '')} · ${esc(a.at.slice(5, 10))}</div></div>`;
+      card.onclick = () => openImage(a);
+      gallery.appendChild(card);
+    }
+  }
   const rows = $('artifact-rows');
-  for (const a of artifacts) {
-    const row = document.createElement('button');
-    row.className = 'list__row';
-    row.innerHTML = `<span class="list__title" style="font-family:var(--font-mono);font-size:12.5px">${esc(a.rel)}</span>
-      <span class="list__meta">${esc(a.root.split('/').pop() ?? '')} · ${a.bytes}b · ${esc(a.at.slice(5, 16))}</span>`;
-    row.onclick = async () => {
-      try {
-        const { content } = await rpc('artifacts.read', { path: a.path });
-        view.innerHTML = `<div class="column preview">
-          <div class="preview__head"><span class="preview__back">‹ Artifacts</span><span class="preview__path">${esc(a.path)}</span></div>
-          <pre></pre></div>`;
-        view.querySelector('pre').textContent = content;
-        view.querySelector('.preview__back').onclick = showArtifacts;
-      } catch (err) { view.innerHTML = `<div class="empty">${esc(err.message)}</div>`; }
-    };
-    rows.appendChild(row);
+  if (rows) {
+    for (const a of files) {
+      const row = document.createElement('button');
+      row.className = 'list__row';
+      row.innerHTML = `<span class="list__title" style="font-family:var(--font-mono);font-size:12.5px">${esc(a.rel)}</span>
+        <span class="list__meta">${esc(a.root.split('/').pop() ?? '')} · ${a.bytes}b · ${esc(a.at.slice(5, 16))}</span>`;
+      row.onclick = () => openText(a);
+      rows.appendChild(row);
+    }
   }
 }
 
@@ -1252,6 +1441,9 @@ async function showSettings(tab = settingsTab) {
       <div class="set-section">MEMORY</div>
       <div class="set-row"><label>Capture every</label><input id="set-capture" type="number" min="2" value="${cfg.memory.captureEvery}"></div>
       <div class="set-row"><label>Core budget</label><input id="set-budget" type="number" min="500" step="100" value="${cfg.memory.coreBudget}"></div>
+      <div class="set-section">CHROME</div>
+      <div class="set-row"><label>Workshop imp</label>
+        <select id="set-pet"><option value="off"${cfg.ui?.pet ? '' : ' selected'}>off</option><option value="on"${cfg.ui?.pet ? ' selected' : ''}>on — idles in the rail, hammers when working</option></select></div>
       <div class="set-save"><button class="send" id="set-save-general">Save</button></div>`;
     $('set-save-general').onclick = async () => {
       await rpc('config.set', {
@@ -1259,6 +1451,7 @@ async function showSettings(tab = settingsTab) {
         voice: { tone: $('set-tone').value, notes: $('set-notes').value },
         permissions: { mode: $('set-perm').value },
         memory: { captureEvery: Number($('set-capture').value), coreBudget: Number($('set-budget').value) },
+        ui: { pet: $('set-pet').value === 'on' },
       });
       await loadPermMode();
       showSettings('general');
@@ -1339,6 +1532,7 @@ async function loadPermMode() {
   try {
     const cfg = await rpc('config.get');
     permMode = cfg.permissions?.mode ?? 'ask';
+    initImp(cfg.ui?.pet === true);
   } catch { permMode = 'ask'; }
   renderPermBtn();
 }
@@ -1372,7 +1566,7 @@ $('cmd-search').onclick = openSearch;
 $('switcher').onclick = toggleSwitcherMenu;
 document.querySelectorAll('[data-view]').forEach(btn =>
   btn.addEventListener('click', () =>
-    ({ memory: showMemory, artifacts: showArtifacts, settings: showSettings })[btn.dataset.view]()));
+    ({ memory: showMemory, artifacts: () => showArtifacts(), settings: () => showSettings(), capabilities: showCapabilities })[btn.dataset.view]()));
 $('overlay').addEventListener('click', e => { if (e.target === $('overlay')) closeOverlay(); });
 
 $('rail-toggle').onclick = () => {

@@ -9,7 +9,7 @@ export interface Config {
     ollama: { url: string };
     anthropic: { modelDefault: string };
   };
-  ui: { skinDark: string; skinLight: string };
+  ui: { skinDark: string; skinLight: string; pet: boolean };
   user: { name: string };
   channels: { telegram: { ownerId: string | null } };
   memory: {
@@ -51,7 +51,7 @@ const DEFAULTS: Config = {
     ollama: { url: 'http://127.0.0.1:11434' },
     anthropic: { modelDefault: 'claude-sonnet-5' },
   },
-  ui: { skinDark: 'forge', skinLight: 'daybreak' },
+  ui: { skinDark: 'forge', skinLight: 'daybreak', pet: false },
   user: { name: 'the user' },
   channels: { telegram: { ownerId: null } },
   memory: { captureEvery: 8, recentWindow: 40, foldChunk: 30, coreBudget: 2200, compactThreshold: 16000 },
@@ -111,6 +111,7 @@ model_default = ${JSON.stringify(cfg.providers.anthropic.modelDefault)}
 [ui]
 skin_dark = ${JSON.stringify(cfg.ui.skinDark)}
 skin_light = ${JSON.stringify(cfg.ui.skinLight)}
+pet = ${cfg.ui.pet}
 
 [user]
 name = ${JSON.stringify(cfg.user.name)}
@@ -160,6 +161,7 @@ export function loadConfig(): Config {
   }
   if (typeof raw.ui?.skin_dark === 'string') cfg.ui.skinDark = raw.ui.skin_dark;
   if (typeof raw.ui?.skin_light === 'string') cfg.ui.skinLight = raw.ui.skin_light;
+  if (typeof raw.ui?.pet === 'boolean') cfg.ui.pet = raw.ui.pet;
   if (typeof raw.user?.name === 'string') cfg.user.name = raw.user.name;
   const rawOwner = raw.channels?.telegram?.owner_id;
   if (typeof rawOwner === 'string' || typeof rawOwner === 'number') {

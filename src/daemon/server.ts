@@ -114,6 +114,34 @@ export class Hephd {
       }
       const path = (req.url ?? '/').split('?')[0].split('#')[0];
       const file = path === '/' ? 'index.html' : path.slice(1);
+      // Artifact files for the gallery — receipted paths only, token-gated
+      // (same secret as the WS; this daemon keeps no request logs, and the
+      // surface is loopback/tailnet). Images render inline; period.
+      if (path === '/artifact') {
+        const params = new URL(req.url ?? '/', 'http://localhost').searchParams;
+        const offered = Buffer.from(params.get('token') ?? '');
+        const expected = Buffer.from(this.token);
+        if (offered.length !== expected.length || !timingSafeEqual(offered, expected)) {
+          res.writeHead(401).end();
+          return;
+        }
+        const receiptRow = getDb()
+          .prepare("SELECT detail FROM receipts WHERE id = ? AND kind = 'artifact'")
+          .get(Number(params.get('id'))) as { detail: string } | undefined;
+        if (!receiptRow) { res.writeHead(404).end(); return; }
+        try {
+          const { path: artifactPath } = JSON.parse(receiptRow.detail) as { path: string };
+          if (!existsSync(artifactPath)) { res.writeHead(404).end(); return; }
+          const IMG: Record<string, string> = {
+            '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+          };
+          const mime = IMG[extname(artifactPath).toLowerCase()] ?? 'text/plain; charset=utf-8';
+          res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store' });
+          res.end(readFileSync(artifactPath));
+        } catch { res.writeHead(404).end(); }
+        return;
+      }
       // Licensed fonts live in ~/.hephaestus/fonts — served, never
       // committed. The repo carries only open-licensed files.
       if (/^userfonts\/[\w.-]+\.(otf|woff2?|ttf)$/.test(file)) {
@@ -245,6 +273,7 @@ export class Hephd {
           memory: this.cfg.memory,
           voice: this.cfg.voice,
           permissions: this.cfg.permissions,
+          ui: this.cfg.ui,
           connections: {
             ollamaUrl: this.cfg.providers.ollama.url,
             anthropicKey: !!getSecret('ANTHROPIC_API_KEY') || undefined,
@@ -279,6 +308,8 @@ export class Hephd {
           this.cfg.permissions.mode = perms.mode;
           this.broker.setMode(perms.mode);
         }
+        const ui = p.ui as { pet?: unknown } | undefined;
+        if (typeof ui?.pet === 'boolean') this.cfg.ui.pet = ui.pet;
         saveConfig(this.cfg);
         this.providers = new Providers(this.cfg); // rebind lanes immediately
         receipt('config_set', { models: this.cfg.models, user: this.cfg.user.name });
@@ -315,6 +346,36 @@ export class Hephd {
 
       case 'mcp.status':
         return { servers: mcpStatus(), web: webAvailable() };
+
+      case 'capabilities.get': {
+        // The honest inventory — live-derived, never aspirational. This is
+        // the page that answers "what can it actually do, right now".
+        const skills = listSkills();
+        const mcp = mcpStatus();
+        const factCount = (getDb().prepare('SELECT COUNT(*) n FROM facts WHERE active = 1').get() as { n: number }).n;
+        const episodeCount = (getDb().prepare('SELECT COUNT(*) n FROM episodes').get() as { n: number }).n;
+        const grants = getDb().prepare("SELECT tool, COUNT(*) n FROM grants WHERE revoked = 0 AND scope = 'always' GROUP BY tool").all();
+        return {
+          version: VERSION,
+          hands: {
+            files: ['fs_read', 'fs_write', 'fs_list', 'fs_grep'],
+            shell: true,
+            web: webAvailable(),
+            mcp: mcp.map(s => ({ server: s.server, tools: s.tools })),
+            delegation: true,
+          },
+          modes: { plan: true, permission: this.cfg.permissions.mode },
+          models: this.providers.bindings(),
+          memory: { facts: factCount, episodes: episodeCount, coreBudget: this.cfg.memory.coreBudget },
+          skills: skills.length,
+          channels: {
+            telegram: !!getSecret('TELEGRAM_BOT_TOKEN') && !!this.cfg.channels.telegram.ownerId,
+            imessageSkill: skills.some(s => s.name === 'imessage'),
+          },
+          grants,
+          jobs: listJobs().length,
+        };
+      }
 
       case 'skills.import': {
         // The Settings-pane twin of `heph skills import` — sweep SKILL.md
@@ -390,7 +451,7 @@ export class Hephd {
             // A file that no longer exists is history, not an artifact —
             // the receipt remains; the shelf shows only what's real.
             if (!existsSync(detail.path)) continue;
-            artifacts.push({ ...detail, sessionId: row.session_id, at: row.created_at });
+            artifacts.push({ ...detail, id: row.id, sessionId: row.session_id, at: row.created_at });
           } catch { /* malformed old row */ }
         }
         return artifacts;
