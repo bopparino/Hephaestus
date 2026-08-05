@@ -104,6 +104,8 @@ let ws = null, nextId = 1;
 const pending = new Map();
 
 function connect() {
+  // Skip WebSocket in file:// dev mode — daemon isn't running
+  if (location.protocol === 'file:') { setConn('dev', 'ok'); loadSkins(); return; }
   // wss under https — tailscale serve (heph share) fronts us with TLS
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws?token=${token}`);
@@ -129,6 +131,9 @@ function connect() {
     pending.delete(frame.id);
     frame.error ? waiter.reject(new Error(frame.error.message)) : waiter.resolve(frame.result);
   };
+  ws.onerror = () => { /* ws.onclose handles retry */ };
+  // Dev-mode fallback: if daemon isn't running, load skins.json after a grace period
+  setTimeout(() => { if (!state.skins.length) loadSkins(); }, 600);
 }
 
 function rpc(method, params) {
@@ -267,6 +272,172 @@ const TOKEN_KEYS = ['--paper', '--paper-raised', '--paper-sunken', '--rail', '--
   '--seg-active', '--focus-border', '--send-disabled', '--scrim',
   '--diff-add-bg', '--diff-del-bg'];
 
+// Dev-mode skin palette fallback — mirrors skins.json inline for file:// safety
+function getDevSkins() {
+  return [
+    {
+      name: 'sepulcher', label: 'Sepulcher', polarity: 'dark',
+      palette: {
+        bg: '#0B0A14', bgAlt: '#080712', surface: '#131229',
+        border: '#1E1C30', fg: '#D4CFC6', fgMuted: '#7A7690',
+        accent: '#6B5B8A', accentAlt: '#8B7DB8', positive: '#5E7A4E',
+        warning: '#8B7DB8', danger: '#8B4A6A', info: '#5B7A9A'
+      },
+      resolved: { fgOnAccent: '#D4CFC6', contrastLifted: [] }
+    },
+    {
+      name: 'forge', label: 'Forge', polarity: 'dark',
+      palette: {
+        bg: '#100D0A', bgAlt: '#151110', surface: '#1D1712',
+        border: '#332920', fg: '#E4D9C4', fgMuted: '#8C8070',
+        accent: '#C75B29', accentAlt: '#D9A441', positive: '#6F8F55',
+        warning: '#D9A441', danger: '#B23B2E', info: '#7FA8A0'
+      },
+      resolved: { fgOnAccent: '#100D0A', contrastLifted: [] }
+    },
+    {
+      name: 'arcadia', label: 'Arcadia', polarity: 'dark',
+      palette: {
+        bg: '#2B2C30', bgAlt: '#232428', surface: '#313237',
+        border: '#4A4B50', fg: '#D3C9AE', fgMuted: '#888C91',
+        accent: '#C2A34E', accentAlt: '#B12C50', positive: '#8A9A6E',
+        warning: '#C2A34E', danger: '#B12C50', info: '#8A5769'
+      },
+      resolved: { fgOnAccent: '#2B2C30', contrastLifted: [] }
+    },
+    {
+      name: 'nether', label: 'Nether', polarity: 'dark',
+      palette: {
+        bg: '#131017', bgAlt: '#18141E', surface: '#1C1722',
+        border: '#2F2739', fg: '#DED7E6', fgMuted: '#837B92',
+        accent: '#A88FCC', accentAlt: '#C0BFC7', positive: '#7C9A78',
+        warning: '#C5A05A', danger: '#B54A5E', info: '#8FA2C8'
+      },
+      resolved: { fgOnAccent: '#131017', contrastLifted: [] }
+    },
+    {
+      name: 'obsidian', label: 'Obsidian', polarity: 'dark',
+      palette: {
+        bg: '#0A0A0B', bgAlt: '#101012', surface: '#131315',
+        border: '#26262A', fg: '#E6E4E1', fgMuted: '#77757F',
+        accent: '#D4AF37', accentAlt: '#8C8C94', positive: '#6F8F6A',
+        warning: '#D4AF37', danger: '#B0453A', info: '#7E8B99'
+      },
+      resolved: { fgOnAccent: '#0A0A0B', contrastLifted: [] }
+    },
+    {
+      name: 'oxide', label: 'Oxide', polarity: 'dark',
+      palette: {
+        bg: '#101619', bgAlt: '#141B1F', surface: '#172024',
+        border: '#2A383E', fg: '#D5DEDE', fgMuted: '#7A8C8E',
+        accent: '#57A38B', accentAlt: '#8FA3AD', positive: '#57A38B',
+        warning: '#C0A060', danger: '#B25548', info: '#8FA3AD'
+      },
+      resolved: { fgOnAccent: '#101619', contrastLifted: [] }
+    },
+    {
+      name: 'talos', label: 'Talos', polarity: 'dark',
+      palette: {
+        bg: '#141210', bgAlt: '#1A1714', surface: '#1D1915',
+        border: '#372F26', fg: '#E5D9C3', fgMuted: '#8C8172',
+        accent: '#B08D57', accentAlt: '#6FA287', positive: '#6FA287',
+        warning: '#C9A45C', danger: '#B5533C', info: '#8B9CA8'
+      },
+      resolved: { fgOnAccent: '#141210', contrastLifted: [] }
+    },
+    {
+      name: 'lemnos', label: 'Lemnos', polarity: 'dark',
+      palette: {
+        bg: '#1A1510', bgAlt: '#1F1A14', surface: '#261F18',
+        border: '#3A3028', fg: '#E8DDD0', fgMuted: '#8C7E70',
+        accent: '#D4662B', accentAlt: '#A08060', positive: '#5E8F55',
+        warning: '#D4662B', danger: '#A04035', info: '#7088A0'
+      },
+      resolved: { fgOnAccent: '#1A1510', contrastLifted: [] }
+    },
+    {
+      name: 'aegean-night', label: 'Aegean Night', polarity: 'dark',
+      palette: {
+        bg: '#0D1615', bgAlt: '#111D1C', surface: '#142422',
+        border: '#203833', fg: '#D5E8E4', fgMuted: '#5E8A82',
+        accent: '#2A9A8A', accentAlt: '#B89850', positive: '#4A8A6A',
+        warning: '#B89850', danger: '#A05040', info: '#2A9A8A'
+      },
+      resolved: { fgOnAccent: '#0D1615', contrastLifted: [] }
+    },
+    {
+      name: 'marble', label: 'Marble', polarity: 'light',
+      palette: {
+        bg: '#F5F4F1', bgAlt: '#EFEDE9', surface: '#ECEAE5',
+        border: '#D6D3CC', fg: '#26262B', fgMuted: '#6C6C74',
+        accent: '#7A2E2E', accentAlt: '#5B5B66', positive: '#556B4E',
+        warning: '#9A7B2E', danger: '#7A2E2E', info: '#4E6274'
+      },
+      resolved: { fgOnAccent: '#F5F4F1', contrastLifted: [] }
+    },
+    {
+      name: 'parchment', label: 'Parchment', polarity: 'light',
+      palette: {
+        bg: '#F0E7D3', bgAlt: '#EAE0C8', surface: '#E7DCC2',
+        border: '#CDBFA0', fg: '#3B2F1F', fgMuted: '#7A6B54',
+        accent: '#8C5A22', accentAlt: '#A03A2E', positive: '#5F6E3E',
+        warning: '#8C5A22', danger: '#A03A2E', info: '#5E6E86'
+      },
+      resolved: { fgOnAccent: '#F0E7D3', contrastLifted: [] }
+    },
+    {
+      name: 'daybreak', label: 'Daybreak', polarity: 'light',
+      palette: {
+        bg: '#F3EDE2', bgAlt: '#EDE5D6', surface: '#EAE2D3',
+        border: '#D4C8B2', fg: '#2A241C', fgMuted: '#6E6454',
+        accent: '#C25A1F', accentAlt: '#9A7B2E', positive: '#5E7A42',
+        warning: '#9A7B2E', danger: '#A63A2C', info: '#4E7A74'
+      },
+      resolved: { fgOnAccent: '#F3EDE2', contrastLifted: [] }
+    },
+    {
+      name: 'gypsum', label: 'Gypsum', polarity: 'light',
+      palette: {
+        bg: '#FAFAF8', bgAlt: '#F3F3F0', surface: '#F0F0ED',
+        border: '#DBDBD6', fg: '#1B1B1E', fgMuted: '#71716F',
+        accent: '#B8860B', accentAlt: '#5E5E66', positive: '#54724E',
+        warning: '#B8860B', danger: '#A03E34', info: '#566878'
+      },
+      resolved: { fgOnAccent: '#FAFAF8', contrastLifted: [] }
+    },
+    {
+      name: 'aegean-day', label: 'Aegean Day', polarity: 'light',
+      palette: {
+        bg: '#EDF3F1', bgAlt: '#E4EDEA', surface: '#DFEAE7',
+        border: '#BFD2CD', fg: '#1C2F2E', fgMuted: '#527270',
+        accent: '#1F7A6E', accentAlt: '#B0803F', positive: '#3E7A5C',
+        warning: '#B0803F', danger: '#A64A3E', info: '#1F7A6E'
+      },
+      resolved: { fgOnAccent: '#EDF3F1', contrastLifted: [] }
+    },
+    {
+      name: 'terracotta', label: 'Terracotta', polarity: 'light',
+      palette: {
+        bg: '#F2EBE3', bgAlt: '#ECE4DA', surface: '#E8DFD4',
+        border: '#CDBAAD', fg: '#2C2018', fgMuted: '#6B5D4F',
+        accent: '#A04030', accentAlt: '#7A6A4A', positive: '#5A7A42',
+        warning: '#7A6A4A', danger: '#A04030', info: '#4A6A7A'
+      },
+      resolved: { fgOnAccent: '#F2EBE3', contrastLifted: [] }
+    },
+    {
+      name: 'olive', label: 'Olive', polarity: 'light',
+      palette: {
+        bg: '#ECEBE0', bgAlt: '#E4E3D6', surface: '#DFDED2',
+        border: '#C5C4B8', fg: '#1E1E18', fgMuted: '#62625C',
+        accent: '#4A6B3A', accentAlt: '#6B6A58', positive: '#4A6B3A',
+        warning: '#8A7A30', danger: '#8A3A3A', info: '#3A5A6A'
+      },
+      resolved: { fgOnAccent: '#ECEBE0', contrastLifted: [] }
+    }
+  ];
+}
+
 function applySkin(skin) {
   const root = document.documentElement.style;
   if (skin.name === 'marble') { // marble IS the stylesheet — clear overrides
@@ -294,16 +465,38 @@ function applySkin(skin) {
 }
 
 async function loadSkins() {
-  state.skins = await rpc('skins.list');
+  // Dev-mode fallback: if the daemon isn't running, load from embedded data
   const select = $('skin-select');
+  const saved = localStorage.getItem('heph-skin') ?? 'sepulcher';
+  
+  // Try daemon first
+  try {
+    state.skins = await rpc('skins.list');
+  } catch {
+    // Dev mode — load from inline data (fetch from file:// is unreliable)
+    state.skins = getDevSkins();
+  }
+  
   select.innerHTML = state.skins.map(s => `<option value="${esc(s.name)}">${esc(s.label)} · ${s.polarity}</option>`).join('');
-  // grimdark-first: the Forge is the default face; marble is the light option
-  const saved = localStorage.getItem('heph-skin') ?? 'forge';
-  select.value = state.skins.some(s => s.name === saved) ? saved : 'forge';
-  applySkin(await rpc('skins.get', { name: select.value }));
+  select.value = state.skins.some(s => s.name === saved) ? saved : 'sepulcher';
+  
+  let skin;
+  try {
+    skin = await rpc('skins.get', { name: select.value });
+  } catch {
+    skin = state.skins.find(s => s.name === select.value);
+  }
+  applySkin(skin);
+  
   select.onchange = async () => {
     localStorage.setItem('heph-skin', select.value);
-    applySkin(await rpc('skins.get', { name: select.value }));
+    let skin;
+    try {
+      skin = await rpc('skins.get', { name: select.value });
+    } catch {
+      skin = state.skins.find(s => s.name === select.value);
+    }
+    applySkin(skin);
   };
 }
 
@@ -562,8 +755,8 @@ function newChat() {
   setCrumb('new chat', null);
   $('view').innerHTML = `
     <div class="hero">
-      <div class="hero__brand">HEPHAESTUS</div>
-      <div class="hero__sub">Ask a question, point me at a project, or state the work.<br>I can read, build, search, and remember.</div>
+      <div class="hero__brand">Sepulcher</div>
+      <div class="hero__sub">A mind that remembers. Ask, point, or state the work.<br>I read, I build, I search, I recall what was lost.</div>
     </div>
     <div class="column recent">
       <div class="recent__label">PICK UP WHERE YOU LEFT OFF</div>
@@ -1428,14 +1621,15 @@ async function showSettings(tab = settingsTab) {
   const content = $('set-content');
 
   if (tab === 'general') {
-    const cfg = await rpc('config.get');
+    let cfg;
+    try { cfg = await rpc('config.get'); } catch { cfg = getDevConfig(); }
     content.innerHTML = `
       <div class="set-section">IDENTITY</div>
       <div class="set-row"><label>Your name</label><input id="set-name" value="${esc(cfg.user.name)}"></div>
       <div class="set-row"><label>Voice</label>
         <select id="set-tone">${['plain', 'warm', 'dry'].map(t => `<option value="${t}"${cfg.voice.tone === t ? ' selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="set-row" style="align-items:flex-start"><label style="padding-top:8px">Voice notes</label>
-        <textarea id="set-notes" class="voice-notes" placeholder="Chat register only — work products stay neutral.">${esc(cfg.voice.notes)}</textarea></div>
+      <div class="set-row"><label>Voice notes</label>
+        <textarea id="set-notes" class="voice-notes" placeholder="Chat register only — work products stay neutral." rows="3">${esc(cfg.voice.notes)}</textarea></div>
       <div class="set-section">PERMISSIONS</div>
       <div class="set-row"><label>Mode</label>
         <select id="set-perm">
@@ -1447,6 +1641,16 @@ async function showSettings(tab = settingsTab) {
       <div class="set-row"><label>Capture every</label><input id="set-capture" type="number" min="2" value="${cfg.memory.captureEvery}"></div>
       <div class="set-row"><label>Core budget</label><input id="set-budget" type="number" min="500" step="100" value="${cfg.memory.coreBudget}"></div>
       <div class="set-section">CHROME</div>
+      <div class="set-row"><label>Hero font</label>
+        <select id="set-font">
+          ${[
+            ['mondwest', 'PP Mondwest — serif display'],
+            ['cinzel', 'Cinzel — stone inscription'],
+            ['medieval', 'MedievalSharp — weathered brush'],
+            ['pirata', 'Pirata One — gothic bold'],
+            ['unifraktur', 'Unifraktur — blackletter']
+          ].map(([v, l]) => `<option value="${v}"${cfg.ui?.heroFont === v ? ' selected' : ''}>${l}</option>`).join('')}
+        </select></div>
       <div class="set-row"><label>Workshop imp</label>
         <select id="set-pet"><option value="off"${cfg.ui?.pet ? '' : ' selected'}>off</option><option value="on"${cfg.ui?.pet ? ' selected' : ''}>on — idles in the rail, hammers when working</option></select></div>
       <div class="set-save"><button class="send" id="set-save-general">Save</button></div>`;
@@ -1456,8 +1660,11 @@ async function showSettings(tab = settingsTab) {
         voice: { tone: $('set-tone').value, notes: $('set-notes').value },
         permissions: { mode: $('set-perm').value },
         memory: { captureEvery: Number($('set-capture').value), coreBudget: Number($('set-budget').value) },
-        ui: { pet: $('set-pet').value === 'on' },
+        ui: { pet: $('set-pet').value === 'on', heroFont: $('set-font').value },
       });
+      // Dev-mode: also save font to localStorage for instant recall
+      localStorage.setItem('heph-hero-font', $('set-font').value);
+      applyHeroFont($('set-font').value);
       await loadPermMode();
       showSettings('general');
     };
@@ -1623,6 +1830,37 @@ window.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'n') { e.preventDefault(); newChat(); $('input').focus(); }
   if (e.key === 'Escape') { $('model-popup').classList.add('hidden'); $('switcher-menu').classList.add('hidden'); closeOverlay(); }
 });
+
+// ---- font loader ----------------------------------------------------------
+
+const HERO_FONTS = {
+  mondwest:   '"PP Mondwest", Georgia, serif',
+  cinzel:     '"Cinzel", Georgia, serif',
+  medieval:   '"MedievalSharp", Georgia, serif',
+  pirata:     '"Pirata One", Georgia, serif',
+  unifraktur: '"UnifrakturMaguntia", Georgia, serif',
+};
+
+function applyHeroFont(name) {
+  const font = HERO_FONTS[name] || HERO_FONTS.mondwest;
+  document.documentElement.style.setProperty('--font-hero', font);
+}
+
+// Load saved hero font from localStorage (dev mode fallback)
+const savedFont = localStorage.getItem('heph-hero-font') || 'mondwest';
+applyHeroFont(savedFont);
+
+// Dev-mode config fallback — mirrors daemon config shape
+function getDevConfig() {
+  return {
+    user: { name: 'Austin' },
+    voice: { tone: 'warm', notes: '' },
+    permissions: { mode: 'ask' },
+    memory: { captureEvery: 6, coreBudget: 8000 },
+    models: { chat: 'openai/gpt-4o', plan: 'openai/gpt-4o-mini' },
+    ui: { pet: false, heroFont: savedFont },
+  };
+}
 
 setPlan(false);
 newChat();

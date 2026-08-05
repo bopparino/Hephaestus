@@ -1,7 +1,7 @@
-/* Hephaestus 2.0 — design tokens, ported verbatim from the design handoff
-   (design_handoff_hephaestus_2/tokens.css). These marble values ARE the
-   default skin; dark skins overwrite the same variables via the skin
-   engine's mapping in app.js. Do not invent values — the handoff is truth. */
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=MedievalSharp&family=Pirata+One&family=UnifrakturMaguntia&display=swap');
+/* Sepulcher tokens — Even in Arcadia, there is no light.
+   A cold indigo void with parchment ink. The image is monochrome, the
+   shader tints it. Every value routes here so dark skins can overwrite. */
 
 @font-face {
   font-family: 'EB Garamond';
@@ -15,8 +15,6 @@
   font-weight: 400 500;
   src: local('JetBrains Mono'), url('fonts/JetBrainsMono.woff2') format('woff2');
 }
-/* Austin's licensed pair — served from ~/.hephaestus/fonts by the daemon,
-   never committed. Missing files fall through to the open stacks. */
 @font-face {
   font-family: 'PP Mondwest';
   font-style: normal;
@@ -31,57 +29,61 @@
 }
 
 :root {
-  /* ---------- Surfaces (warm marble, low chroma) ---------- */
-  --paper:            #F7F5F0;
-  --paper-raised:     #FFFFFF;
-  --paper-sunken:     #F2EFE8;
-  --rail:             #F1EEE7;
-  --rail-inspector:   #F4F1EB;
-  --stone:            #EFECE4;
-  --stone-strong:     #E4E0D6;
-  --stone-active:     #EAE6DC;
+  /* ---------- Surfaces: the void, barely lifted ---------- */
+  --paper:            #0B0A14;   /* deep indigo-black */
+  --paper-raised:     #131229;   /* lifted for composer, popups */
+  --paper-sunken:     #080712;   /* below ground */
+  --rail:             #0E0D1A;   /* sidebar surface */
+  --rail-inspector:   #0E0D1A;   /* right pane matches rail */
+  --stone:            #161528;   /* hover lift */
+  --stone-strong:     #1E1C30;   /* hairline source */
+  --stone-active:     #1A1830;   /* selected/active */
 
-  /* ---------- Lines ---------- */
-  --hairline:         #E4E0D6;
-  --hairline-soft:    #EDE9E0;
-  --hairline-rail:    #DEDAD0;
-  --hairline-strong:  #D2CCC1;
-  --window-border:    #D6D0C5;
-  --separator:        #CDC6B9;
+  /* ---------- Lines: barely there ---------- */
+  --hairline:         #1E1C30;   /* main divider */
+  --hairline-soft:    #161528;   /* subtle separator */
+  --hairline-rail:    #1E1C30;   /* rail divider */
+  --hairline-strong:  #2A2640;   /* composer top, modal edge */
+  --window-border:    #2A2640;   /* floating panels */
+  --separator:        #2A2640;
 
-  /* ---------- Ink ---------- */
-  --ink:              #211E1A;
-  --ink-2:            #363129;
-  --ink-3:            #514B42;
-  --ink-4:            #6B655C;
-  --ink-5:            #756D61;
-  --ink-placeholder:  #857D71;
-  --ink-muted:        #7B7469;
+  /* ---------- Ink: parchment in the dark ---------- */
+  --ink:              #D4CFC6;   /* primary text — candlelight white */
+  --ink-2:            #B0A99F;   /* secondary — warm grey */
+  --ink-3:            #7A7690;   /* tertiary — muted violet-grey */
+  --ink-4:            #4A4660;   /* quaternary — deep violet */
+  --ink-5:            #3A3655;   /* meta text — almost invisible */
+  --ink-placeholder:  #4A4660;   /* placeholder text */
+  --ink-muted:        #6B6580;   /* quiet prose */
 
-  /* ---------- Accent: oxblood — rationed ---------- */
-  --oxblood:          #7A2320;
-  --oxblood-hover:    #5E1A17;
-  --on-oxblood:       #F7F5F0;
+  /* ---------- Accent: violet, rationed ---------- */
+  --oxblood:          #6B5B8A;   /* accent — desaturated violet */
+  --oxblood-hover:    #8B7DB8;   /* hover — brighter violet */
+  --on-oxblood:       #D4CFC6;   /* text on accent */
 
-  /* ---------- Derived states ----------
-     The handoff specs these as one-off hex values; they live here as
-     tokens so dark skins can re-derive them. NOTHING in style.css may
-     use a raw color — every value routes through this file, or the
-     skin bridge can't reach it (the dev-segment bug, 2026-08-04). */
-  --seg-active:       #EDE9E0; /* active mode segment fill */
-  --focus-border:     #B9B1A4; /* composer :focus-within */
-  --send-disabled:    #C9B9B7; /* Send while field is empty */
-  --scrim:            rgba(33, 30, 26, .28); /* overlay backdrop */
-  --diff-add-bg:      rgba(101, 141, 74, .16);  /* diff card: added line */
-  --diff-del-bg:      rgba(164, 66, 52, .13);   /* diff card: removed line */
+  /* ---------- Derived states ---------- */
+  --seg-active:       #1E1C30;   /* active segment fill */
+  --focus-border:     #3A3655;   /* composer focus */
+  --send-disabled:    #2A2640;   /* empty send */
+  --scrim:            rgba(11, 10, 20, .72);   /* overlay backdrop */
+  --diff-add-bg:      rgba(101, 141, 74, .12);  /* diff card: added line */
+  --diff-del-bg:      rgba(164, 66, 52, .10);   /* diff card: removed line */
 
   /* ---------- Type ---------- */
   --font-ui:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-mark:  "PP Mondwest", "EB Garamond", Georgia, serif;   /* wordmark + hero */
+  --font-hero:  "PP Mondwest", "EB Garamond", Georgia, serif;   /* hero text — user-selectable */
   --font-pixel: "PP NeueBit", "JetBrains Mono", ui-monospace, monospace; /* labels with teeth */
+  
+  /* ---------- Font library (user-selectable for hero) ---------- */
+  --font-mondwest:   "PP Mondwest", Georgia, serif;
+  --font-cinzel:     "Cinzel", Georgia, serif;
+  --font-medieval:   "MedievalSharp", Georgia, serif;
+  --font-pirata:     "Pirata One", Georgia, serif;
+  --font-unifraktur: "UnifrakturMaguntia", Georgia, serif;
 
-  /* ---------- Radius: crisp ---------- */
+  /* ---------- Radius: crisp, small ---------- */
   --r-control:  3px;
   --r-field:    4px;
 
