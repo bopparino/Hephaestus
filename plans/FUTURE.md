@@ -16,14 +16,14 @@ A living backlog — everything we want to build, organized by phase. Move items
 - [x] **Code Execution** — Python sandbox with network isolation
 - [x] **Browser Automation** — Playwright headless navigation + text extraction
 
-## Phase 3 — Scale
+## Phase 3 — Scale ✅ Phase 3 shipped 2026-08-06
 
-- [ ] **Parallel Delegation** — Multi-agent workflows, subagent spawning
-- [ ] **Skills System** — Reusable procedural knowledge (SKILL.md loader, context injection)
-- [ ] **TTS / Voice** — Speech output for responses
-- [ ] **iMessage Channel** — Native Mac messaging integration
+- [x] **Parallel Delegation** — delegate tool spawns subagents (already existed, now exposed)
+- [x] **TTS / Voice** — text_to_speech via macOS say command
+- [x] **iMessage Channel** — send_message via macOS Messages app
+- [x] **Skills System** — skills_list, skill_view, skill_save already exist; enhanced by delegate
 
-## Phase 4 — Presence
+## Phase 4 — Presence (Next)
 
 - [ ] **Desktop Automation** — Drive macOS UI (click, type, screenshot)
 - [ ] **Memory Import** — Bulk import from GlasHaus `~/.glashaus/memory/`
