@@ -1,0 +1,57 @@
+# Sepulcher Future Features
+
+A living backlog — everything we want to build, organized by phase. Move items up when they're in progress, strike them when they ship.
+
+## Phase 2 — Agent Execution (Next)
+
+- [ ] **Clarify** — Ask user mid-task when ambiguous (like Hermes' clarify tool)
+- [ ] **Cron/Scheduled Jobs** — Recurring tasks, morning briefs, watchdogs (expand existing jobs.ts)
+- [ ] **Code Execution** — Python sandbox for data analysis, charts, validation
+- [ ] **Browser Automation** — Playwright MCP or native integration
+- [ ] **Session Search** — FTS5 over conversation history ("what did we say about X last month?")
+
+## Phase 3 — Scale
+
+- [ ] **Parallel Delegation** — Multi-agent workflows, subagent spawning
+- [ ] **Skills System** — Reusable procedural knowledge (SKILL.md loader, context injection)
+- [ ] **TTS / Voice** — Speech output for responses
+- [ ] **iMessage Channel** — Native Mac messaging integration
+
+## Phase 4 — Presence
+
+- [ ] **Desktop Automation** — Drive macOS UI (click, type, screenshot)
+- [ ] **Memory Import** — Bulk import from GlasHaus `~/.glashaus/memory/`
+- [ ] **Conflict Resolution** — When agent saves a fact that contradicts existing
+- [ ] **Dream Consolidation UI** — Surface nightly merge suggestions for user review
+
+## Phase 1 Follow-ups (Memory Core polish)
+
+- [ ] **Inline edit** — Click a fact in Settings → Memory to edit content/category/importance
+- [ ] **Promote/demote buttons** — ⭐ toggle on each fact row
+- [ ] **Forget/restore buttons** — Trash icon → soft delete; restore from "Forgotten" section
+- [ ] **Bulk operations** — Multi-select facts, forget/restore/promote many at once
+- [ ] **Memory filtering** — Filter by category, importance range, age
+- [ ] **Episode CRUD** — Same treatment for conversation episodes (search, edit, forget)
+
+## Quality of Life
+
+- [ ] **Better error handling** — Graceful fallbacks when daemon is unreachable
+- [ ] **Dark/light skin polish** — Fix remaining contrast issues on light skins
+- [ ] **Settings persistence** — Remember which Settings tab was last open
+- [ ] **Keyboard shortcuts** — Cmd+Shift+M for Memory, Cmd+Shift+S for Settings
+
+## Known Issues
+
+- Light skin gradient on `#pane::after` still visible — may need per-skin CSS variable
+- Dev mode memory uses localStorage only — no sync with daemon when it comes online
+- PP Mondwest font requires manual install (personal-use license)
+
+## Ideas (unscoped)
+
+- Voice input (Whisper) for the composer
+- Image generation via MCP (ComfyUI, etc.)
+- Telegram bot commands for memory search/forget
+- Export memory to Obsidian vault
+- AI-suggested memory consolidation ("these 3 facts could be merged into 1")
+- Memory decay visualization (heatmap of fact ages)
+- Scheduled memory review ("facts older than 90 days you might want to update")

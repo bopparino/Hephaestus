@@ -9,7 +9,7 @@ import { saveConfig, type Config } from './config.js';
 import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { loadSkins } from './skins.js';
 import { initEmbeddings, embed } from './embeddings.js';
-import { addFact, coreFacts, forgetFact, recallEpisodes, recallFacts, renderCore, renderRecall } from './memory.js';
+import { addFact, coreFacts, forgetFact, recallEpisodes, recallFacts, renderCore, renderRecall, searchFacts, listFacts, getFact, updateFact, restoreFact, setCore } from './memory.js';
 import { bumpCaptureCounter, isTrivial, runCapture } from './capture.js';
 import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
@@ -47,7 +47,7 @@ function capabilities(): string {
   return `
 
 [CAPABILITIES — what you can actually do, right now]
-- Persistent memory: recall is automatic; a background pass captures durable facts; memory_save pins one deliberately.
+- Persistent memory: recall is automatic; a background pass captures durable facts. memory_save pins one deliberately. memory_search, memory_list, memory_update, memory_forget, memory_restore, memory_promote, memory_demote — the agent can now search, edit, forget, restore, and curate its own memory.
 - Files and shell in your workspace root (see WORKSPACE below): fs_read, fs_write, fs_list, fs_grep, shell — every write and command passes the user's permission broker.
 ${web
     ? '- web_search and web_fetch: live web via ollama.com. Use them for anything current; cite what you fetch.'
@@ -409,6 +409,96 @@ export class Hephd {
         }
         receipt('skills_import', { source, imported, skipped });
         return { imported, skipped };
+      }
+
+      // ---- Memory CRUD (Phase 1) -------------------------------------------
+      case 'memory.search': {
+        const q = String(p.query ?? '');
+        const limit = typeof p.limit === 'number' ? p.limit : 20;
+        return searchFacts(q, { limit }).map(f => ({
+          id: f.id,
+          content: f.content,
+          category: f.category,
+          importance: f.importance,
+          core: !!f.core,
+          active: !!f.active,
+          created_at: f.created_at,
+          updated_at: f.updated_at,
+        }));
+      }
+
+      case 'memory.list': {
+        return listFacts({
+          scope: typeof p.scope === 'string' ? p.scope : undefined,
+          core: typeof p.core === 'boolean' ? p.core : undefined,
+          active: typeof p.active === 'boolean' ? p.active : true,
+          limit: typeof p.limit === 'number' ? p.limit : 50,
+        }).map(f => ({
+          id: f.id,
+          content: f.content,
+          category: f.category,
+          importance: f.importance,
+          core: !!f.core,
+          active: !!f.active,
+          created_at: f.created_at,
+          updated_at: f.updated_at,
+        }));
+      }
+
+      case 'memory.get': {
+        const id = Number(p.id);
+        if (!id) throw new Error('memory.get needs id');
+        const f = getFact(id);
+        if (!f) throw new Error(`no such fact: ${id}`);
+        return {
+          id: f.id,
+          content: f.content,
+          category: f.category,
+          importance: f.importance,
+          core: !!f.core,
+          active: !!f.active,
+          created_at: f.created_at,
+          updated_at: f.updated_at,
+        };
+      }
+
+      case 'memory.update': {
+        const id = Number(p.id);
+        if (!id) throw new Error('memory.update needs id');
+        updateFact(id, {
+          content: typeof p.content === 'string' ? p.content : undefined,
+          category: typeof p.category === 'string' ? p.category : undefined,
+          importance: typeof p.importance === 'number' ? p.importance : undefined,
+        });
+        return { ok: true };
+      }
+
+      case 'memory.forget': {
+        const id = Number(p.id);
+        if (!id) throw new Error('memory.forget needs id');
+        forgetFact(id);
+        return { ok: true };
+      }
+
+      case 'memory.restore': {
+        const id = Number(p.id);
+        if (!id) throw new Error('memory.restore needs id');
+        restoreFact(id);
+        return { ok: true };
+      }
+
+      case 'memory.promote': {
+        const id = Number(p.id);
+        if (!id) throw new Error('memory.promote needs id');
+        setCore(id, true, String(p.reason ?? 'promoted via shell'));
+        return { ok: true };
+      }
+
+      case 'memory.demote': {
+        const id = Number(p.id);
+        if (!id) throw new Error('memory.demote needs id');
+        setCore(id, false, String(p.reason ?? 'demoted via shell'));
+        return { ok: true };
       }
 
       case 'setup.status': {

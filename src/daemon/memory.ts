@@ -171,12 +171,91 @@ export function forgetFact(id: number): void {
   getDb().prepare("UPDATE facts SET active = 0, updated_at = datetime('now') WHERE id = ?").run(id);
 }
 
+export function restoreFact(id: number): void {
+  getDb().prepare("UPDATE facts SET active = 1, updated_at = datetime('now') WHERE id = ?").run(id);
+}
+
 export function setCore(id: number, core: boolean, why: string): void {
   getDb().prepare("UPDATE facts SET core = ?, updated_at = datetime('now') WHERE id = ?").run(core ? 1 : 0, id);
   receipt('memory_curate', { factId: id, core, why });
 }
 
-// ---- rendering -------------------------------------------------------------
+// ---- full CRUD (Phase 1) ----------------------------------------------------
+
+export function getFact(id: number): Fact | undefined {
+  return getDb().prepare('SELECT * FROM facts WHERE id = ?').get(id) as Fact | undefined;
+}
+
+export function listFacts(opts: { scope?: string; active?: boolean; core?: boolean; category?: string; limit?: number } = {}): Fact[] {
+  const db = getDb();
+  const conditions: string[] = ['1=1'];
+  const params: (string | number)[] = [];
+  if (opts.scope !== undefined) { conditions.push('scope = ?'); params.push(opts.scope); }
+  if (opts.active !== undefined) { conditions.push('active = ?'); params.push(opts.active ? 1 : 0); }
+  if (opts.core !== undefined) { conditions.push('core = ?'); params.push(opts.core ? 1 : 0); }
+  if (opts.category !== undefined) { conditions.push('category = ?'); params.push(opts.category); }
+  const sql = `SELECT * FROM facts WHERE ${conditions.join(' AND ')} ORDER BY updated_at DESC${opts.limit ? ' LIMIT ?' : ''}`;
+  if (opts.limit) params.push(opts.limit);
+  return db.prepare(sql).all(...params) as Fact[];
+}
+
+export function searchFacts(query: string, opts: { scope?: string; limit?: number } = {}): Fact[] {
+  const { scope = 'global', limit = 20 } = opts;
+  const db = getDb();
+  const now = Date.now();
+  const ftsRanks = new Map<number, number>();
+  const q = ftsQuery(query);
+  if (q) {
+    try {
+      (db.prepare(`
+        SELECT f.id, row_number() OVER (ORDER BY bm25(facts_fts)) - 1 AS r
+        FROM facts_fts JOIN facts f ON f.id = facts_fts.rowid
+        WHERE facts_fts MATCH ? LIMIT 40
+      `).all(q) as { id: number; r: number }[]).forEach(row => ftsRanks.set(row.id, row.r));
+    } catch { /* malformed FTS query */ }
+  }
+  const pool = new Map<number, Fact>();
+  const add = (rows: Fact[]) => rows.forEach(r => pool.set(r.id, r));
+  if (ftsRanks.size) {
+    add(db.prepare(`SELECT * FROM facts WHERE id IN (${[...ftsRanks.keys()].join(',')}) AND scope IN ('global', ?)`).all(scope) as Fact[]);
+  }
+  add(db.prepare(`SELECT * FROM facts WHERE scope IN ('global', ?) ORDER BY updated_at DESC LIMIT 30`).all(scope) as Fact[]);
+  add(db.prepare(`SELECT * FROM facts WHERE scope IN ('global', ?) AND salience >= 0.7 ORDER BY salience DESC LIMIT 20`).all(scope) as Fact[]);
+  return [...pool.values()]
+    .map(f => ({ f, s: score(f, ftsRanks.get(f.id), null, now) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, limit)
+    .map(x => x.f);
+}
+
+export function updateFact(id: number, patch: Partial<Pick<Fact, 'content' | 'category' | 'importance' | 'salience'>>): void {
+  const db = getDb();
+  const existing = db.prepare('SELECT * FROM facts WHERE id = ?').get(id) as Fact | undefined;
+  if (!existing) throw new Error(`no such fact: ${id}`);
+  const fields: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (patch.content !== undefined) { fields.push('content = ?'); params.push(patch.content); }
+  if (patch.category !== undefined) { fields.push('category = ?'); params.push(patch.category); }
+  if (patch.importance !== undefined) { fields.push('importance = ?'); params.push(Math.min(10, Math.max(1, patch.importance))); }
+  if (patch.salience !== undefined) { fields.push('salience = ?'); params.push(patch.salience); }
+  if (!fields.length) return;
+  fields.push("updated_at = datetime('now')");
+  params.push(id);
+  db.prepare(`UPDATE facts SET ${fields.join(', ')} WHERE id = ?`).run(...params);
+  // Re-embed on content change
+  if (patch.content !== undefined) {
+    void embed(patch.content).then(vec => {
+      if (vec) getDb().prepare('UPDATE facts SET embedding = ? WHERE id = ?').run(vec, id);
+    });
+  }
+}
+
+export function deleteFact(id: number): void {
+  getDb().prepare('DELETE FROM facts WHERE id = ?').run(id);
+  getDb().prepare('DELETE FROM facts_fts WHERE rowid = ?').run(id);
+}
+
+// ---- rendering --------------------------------------------------------------
 
 function age(row: { updated_at?: string; created_at: string }): string {
   const days = Math.floor((Date.now() - Date.parse((row.updated_at ?? row.created_at) + 'Z')) / 86400000);

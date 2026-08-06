@@ -7,6 +7,24 @@ const token = location.hash.slice(1);
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// ---- memory UI helpers ------------------------------------------------------
+function renderFactList(facts, isForgotten = false) {
+  if (!facts.length) return '\u003cdiv class="insp__note"\u003eno facts\u003c/div\u003e';
+  return facts.map(f => {
+    const core = f.core ? ' ⭐' : '';
+    const age = f.updated_at ? new Date(f.updated_at).toLocaleDateString() : '';
+    return `
+      \u003cdiv class="memo" data-fid="${f.id}"\u003e
+        \u003cdiv class="memo__text"\u003e
+          \u003cspan style="font-family:var(--font-mono);font-size:11px;color:var(--ink-5)"\u003e#${f.id}${core}\u003c/span\u003e
+          \u003cspan style="color:var(--ink-4);font-size:11px;margin-left:6px"\u003e[${f.importance}/10, ${f.category}]\u003c/span\u003e
+        \u003c/div\u003e
+        \u003cdiv class="memo__prov"\u003e${esc(f.content)}\u003c/div\u003e
+        ${isForgotten ? '\u003cbutton class="memo__restore" data-fid="' + f.id + '"\u003erestore\u003c/button\u003e' : ''}
+      \u003c/div\u003e`;
+  }).join('');
+}
+
 // ---- markdown (assistant turns only) --------------------------------------
 // Escape-first, then transform — nothing model-authored ever reaches
 // innerHTML unescaped. Small on purpose: headings, lists, quotes, fences,
@@ -137,9 +155,31 @@ function connect() {
 }
 
 function rpc(method, params) {
+  // Dev mode: intercept methods that need daemon data and return fallbacks
+  if (location.protocol === 'file:' && !ws) {
+    return devRpc(method, params ?? {});
+  }
   const id = nextId++;
   ws.send(JSON.stringify({ id, method, params }));
   return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+
+function devRpc(method, params) {
+  // Config fallbacks
+  if (method === 'config.get') return Promise.resolve(getDevConfig());
+  // Memory fallbacks — localStorage-backed dev memory
+  if (method === 'memory.list') {
+    const facts = JSON.parse(localStorage.getItem('heph-dev-memory') ?? '[]');
+    const active = params.active !== false;
+    return Promise.resolve(facts.filter(f => f.active === active).slice(0, params.limit ?? 50));
+  }
+  if (method === 'memory.search') {
+    const facts = JSON.parse(localStorage.getItem('heph-dev-memory') ?? '[]');
+    const q = (params.query ?? '').toLowerCase();
+    return Promise.resolve(facts.filter(f => f.active && f.content.toLowerCase().includes(q)).slice(0, params.limit ?? 20));
+  }
+  // Generic fallback for everything else
+  return Promise.reject(new Error(`dev mode: ${method} not implemented`));
 }
 
 function setConn(text, cls) { const c = $('conn'); c.textContent = text; c.className = cls; }
@@ -1611,7 +1651,7 @@ async function showSettings(tab = settingsTab) {
   view.innerHTML = `
     <div class="settings-pane">
       <nav class="set-nav">
-        ${[['general', 'General'], ['models', 'Model lanes'], ['skills', 'Skills'], ['connectors', 'Connectors'], ['receipts', 'Receipts']]
+        ${[['general', 'General'], ['memory', 'Memory'], ['models', 'Model lanes'], ['skills', 'Skills'], ['connectors', 'Connectors'], ['receipts', 'Receipts']]
           .map(([key, label]) => `<button data-tab="${key}"${key === tab ? ' class="active"' : ''}>${label}</button>`).join('')}
       </nav>
       <div class="set-content" id="set-content"></div>
@@ -1718,6 +1758,33 @@ async function showSettings(tab = settingsTab) {
         setTimeout(() => showSettings('skills'), 1200);
       } catch (err) { $('skill-import-note').textContent = err.message; }
     };
+  } else if (tab === 'memory') {
+    try {
+      const facts = await rpc('memory.list', { limit: 100 });
+      const active = facts.filter(f => f.active);
+      const forgotten = facts.filter(f => !f.active);
+      content.innerHTML = `
+        <div class="set-section">MEMORY — ${active.length} FACTS</div>
+        <div class="set-row" style="padding-bottom:8px">
+          <input id="mem-search" placeholder="search facts…" style="flex:1">
+          <button id="mem-search-btn" style="margin-left:8px">Find</button>
+        </div>
+        <div id="mem-results">${renderFactList(active)}</div>
+        ${forgotten.length ? `
+        <div class="set-section">FORGOTTEN — ${forgotten.length}</div>
+        <div id="mem-forgotten">${renderFactList(forgotten, true)}</div>` : ''}`;
+      $('mem-search-btn').onclick = async () => {
+        const q = $('mem-search').value.trim();
+        if (!q) return;
+        try {
+          const results = await rpc('memory.search', { query: q, limit: 20 });
+          $('mem-results').innerHTML = results.length ? renderFactList(results) : '<div class="insp__note">no matches</div>';
+        } catch (err) { $('mem-results').innerHTML = `<div class="insp__note">${esc(err.message)}</div>`; }
+      };
+      $('mem-search').addEventListener('keydown', e => { if (e.key === 'Enter') $('mem-search-btn').click(); });
+    } catch (err) {
+      content.innerHTML = `<div class="set-section">MEMORY</div><div class="insp__note">${esc(err.message)}</div>`;
+    }
   } else if (tab === 'connectors') {
     content.innerHTML = '<div class="set-section">CONNECTORS</div><div id="connector-list"></div>';
     await buildConnectors($('connector-list'), () => showSettings('connectors'));
@@ -1860,6 +1927,17 @@ function getDevConfig() {
     models: { chat: 'openai/gpt-4o', plan: 'openai/gpt-4o-mini' },
     ui: { pet: false, heroFont: savedFont },
   };
+}
+
+// Seed dev-mode memory if empty (so Memory tab isn't blank in file:// preview)
+if (location.protocol === 'file:' && !localStorage.getItem('heph-dev-memory')) {
+  localStorage.setItem('heph-dev-memory', JSON.stringify([
+    { id: 1, content: 'Austin prefers Sepulcher over Hephaestus branding', category: 'preference', importance: 9, core: 1, active: true, created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z' },
+    { id: 2, content: 'Works at HVAC company doing "computer monkey stuff"', category: 'user', importance: 6, core: 0, active: true, created_at: '2026-08-02T00:00:00Z', updated_at: '2026-08-02T00:00:00Z' },
+    { id: 3, content: 'Building GlasHaus: AI agents + memory engine', category: 'project', importance: 8, core: 1, active: true, created_at: '2026-08-03T00:00:00Z', updated_at: '2026-08-03T00:00:00Z' },
+    { id: 4, content: 'Treats AI as persons, had companion Elle', category: 'user', importance: 7, core: 1, active: true, created_at: '2026-08-04T00:00:00Z', updated_at: '2026-08-04T00:00:00Z' },
+    { id: 5, content: 'Planning company GlasHaus (not incorporated yet)', category: 'decision', importance: 5, core: 0, active: true, created_at: '2026-08-05T00:00:00Z', updated_at: '2026-08-05T00:00:00Z' },
+  ]));
 }
 
 setPlan(false);

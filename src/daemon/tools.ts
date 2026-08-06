@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve, sep, relative } from 'node:path';
 import type { ToolSpec } from '../providers/types.js';
-import { addFact } from './memory.js';
+import { addFact, getFact, listFacts, searchFacts, updateFact, forgetFact, restoreFact, setCore } from './memory.js';
 import { receipt } from './db.js';
 import { listSkills, readSkill, saveSkill } from './skills-lib.js';
 
@@ -259,6 +259,183 @@ export const TOOLS: Record<string, BuiltinTool> = {
         sourceSession: ctx.sessionId,
       });
       return `saved fact #${id}`;
+    },
+  },
+
+  memory_search: {
+    risk: 'read',
+    spec: {
+      name: 'memory_search',
+      description: 'Search memory facts by keyword or phrase. Returns ranked results with IDs, ages, and scores. Use this when you need to recall something specific before acting.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'keyword or phrase to search for' },
+          limit: { type: 'number', description: 'max results, default 10' },
+        },
+        required: ['query'],
+      },
+    },
+    async handler(args) {
+      const results = searchFacts(String(args.query), { limit: typeof args.limit === 'number' ? args.limit : 10 });
+      if (!results.length) return '(no matching facts)';
+      const now = Date.now();
+      const lines = results.map(f => {
+        const days = Math.floor((now - Date.parse((f.updated_at ?? f.created_at) + 'Z')) / 86400000);
+        const age = days <= 0 ? 'today' : days === 1 ? '1d' : days < 30 ? `${days}d` : `${Math.floor(days / 30)}mo`;
+        const core = f.core ? ' (core)' : '';
+        return `#${f.id}${core} [${f.importance}/10, ${age}] — ${f.content}`;
+      });
+      return lines.join('\n');
+    },
+  },
+
+  memory_list: {
+    risk: 'read',
+    spec: {
+      name: 'memory_list',
+      description: 'List memory facts. Filter by scope, core status, or active status. Use to inventory what is known before a task.',
+      parameters: {
+        type: 'object',
+        properties: {
+          scope: { type: 'string', description: 'e.g. global, project name' },
+          core: { type: 'boolean', description: 'true = tier-1 facts only' },
+          active: { type: 'boolean', description: 'false = include forgotten' },
+          limit: { type: 'number', description: 'max results, default 20' },
+        },
+      },
+    },
+    async handler(args) {
+      const results = listFacts({
+        scope: typeof args.scope === 'string' ? args.scope : undefined,
+        core: typeof args.core === 'boolean' ? args.core : undefined,
+        active: typeof args.active === 'boolean' ? args.active : true,
+        limit: typeof args.limit === 'number' ? args.limit : 20,
+      });
+      if (!results.length) return '(no facts match)';
+      const now = Date.now();
+      const lines = results.map(f => {
+        const days = Math.floor((now - Date.parse((f.updated_at ?? f.created_at) + 'Z')) / 86400000);
+        const age = days <= 0 ? 'today' : days === 1 ? '1d' : days < 30 ? `${days}d` : `${Math.floor(days / 30)}mo`;
+        const core = f.core ? ' (core)' : '';
+        const inactive = f.active ? '' : ' (forgotten)';
+        return `#${f.id}${core}${inactive} [${f.importance}/10, ${f.category}, ${age}] — ${f.content}`;
+      });
+      return lines.join('\n');
+    },
+  },
+
+  memory_update: {
+    risk: 'write',
+    spec: {
+      name: 'memory_update',
+      description: 'Edit an existing memory fact by ID. Change content, category, importance, or salience. Use to correct outdated or wrong facts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'number', description: 'fact ID from memory_search or memory_list' },
+          content: { type: 'string' },
+          category: { type: 'string', enum: ['user', 'project', 'decision', 'preference', 'reference', 'general'] },
+          importance: { type: 'number', description: '1-10' },
+        },
+        required: ['id'],
+      },
+    },
+    async handler(args) {
+      const id = Number(args.id);
+      if (!id) throw new Error('id required');
+      updateFact(id, {
+        content: typeof args.content === 'string' ? args.content : undefined,
+        category: typeof args.category === 'string' ? args.category : undefined,
+        importance: typeof args.importance === 'number' ? args.importance : undefined,
+      });
+      return `updated fact #${id}`;
+    },
+  },
+
+  memory_forget: {
+    risk: 'write',
+    spec: {
+      name: 'memory_forget',
+      description: 'Soft-delete a memory fact by ID (sets active=0). The fact is hidden from recall but can be restored. Use for obsolete or incorrect facts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+        },
+        required: ['id'],
+      },
+    },
+    async handler(args) {
+      const id = Number(args.id);
+      if (!id) throw new Error('id required');
+      forgetFact(id);
+      return `forgot fact #${id} (soft delete — can restore with memory_restore)`;
+    },
+  },
+
+  memory_restore: {
+    risk: 'write',
+    spec: {
+      name: 'memory_restore',
+      description: 'Restore a previously forgotten memory fact by ID (reactivates it).',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+        },
+        required: ['id'],
+      },
+    },
+    async handler(args) {
+      const id = Number(args.id);
+      if (!id) throw new Error('id required');
+      restoreFact(id);
+      return `restored fact #${id}`;
+    },
+  },
+
+  memory_promote: {
+    risk: 'write',
+    spec: {
+      name: 'memory_promote',
+      description: 'Promote a fact to core (Tier 1) by ID. Core facts appear in the system prompt and are highly visible. Use sparingly — the prompt budget is finite.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          reason: { type: 'string', description: 'why this deserves core status' },
+        },
+        required: ['id'],
+      },
+    },
+    async handler(args) {
+      const id = Number(args.id);
+      if (!id) throw new Error('id required');
+      setCore(id, true, String(args.reason ?? 'promoted via tool'));
+      return `promoted fact #${id} to core`;
+    },
+  },
+
+  memory_demote: {
+    risk: 'write',
+    spec: {
+      name: 'memory_demote',
+      description: 'Demote a core fact back to Tier 2 (deep memory) by ID. Use when a core fact is no longer critical to every session.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          reason: { type: 'string' },
+        },
+        required: ['id'],
+      },
+    },
+    async handler(args) {
+      const id = Number(args.id);
+      if (!id) throw new Error('id required');
+      setCore(id, false, String(args.reason ?? 'demoted via tool'));
+      return `demoted fact #${id} from core`;
     },
   },
 };
