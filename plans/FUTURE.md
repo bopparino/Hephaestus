@@ -10,11 +10,11 @@ A living backlog — everything we want to build, organized by phase. Move items
 
 ## Phase 2 — Agent Execution ✅ Phase 2 shipped 2026-08-06
 
-- [x] **Clarify** — Ask user mid-task when ambiguous (like Hermes' clarify tool)
+- [x] **Clarify** — Ask user mid-task when ambiguous
 - [x] **Session Search** — FTS5 keyword search over conversation history
-- [ ] **Cron/Scheduled Jobs** — Recurring tasks, morning briefs, watchdogs (expand existing jobs.ts)
-- [ ] **Code Execution** — Python sandbox for data analysis, charts, validation
-- [ ] **Browser Automation** — Playwright MCP or native integration
+- [x] **Cron/Scheduled Jobs** — cronjob_add, cronjob_list, cronjob_remove tools
+- [x] **Code Execution** — Python sandbox with network isolation
+- [x] **Browser Automation** — Playwright headless navigation + text extraction
 
 ## Phase 3 — Scale
 
