@@ -182,6 +182,24 @@ function devRpc(method, params) {
   if (method === 'session.search' || method === 'session_search') {
     return Promise.resolve([]);
   }
+  // Jobs fallbacks
+  if (method === 'jobs.list') {
+    return Promise.resolve([
+      { name: 'morning-brief', schedule: 'daily@09:00', prompt: 'Morning check-in for Austin', next_run: '2026-08-07T09:00:00Z', last_result: null },
+      { name: 'weekly-reflect', schedule: 'once@2026-08-10T20:00', prompt: 'Weekly reflection prompt', next_run: '2026-08-10T20:00:00Z', last_result: null },
+    ]);
+  }
+  if (method === 'jobs.add' || method === 'jobs.remove') {
+    return Promise.resolve({ ok: true });
+  }
+  // Code execution fallback — just echo back the code
+  if (method === 'code_run') {
+    return Promise.resolve(`[dev mode] code_run would execute:\n---\n${String(params.code ?? '').slice(0, 500)}\n---\n(use daemon for real execution)`);
+  }
+  // Browser fallback
+  if (method === 'browser_navigate') {
+    return Promise.resolve(`[dev mode] browser_navigate would visit: ${params.url}\n(use daemon for real browser)`);
+  }
   // Clarify fallback — just log to console
   if (method === 'clarify.respond') {
     console.log('[dev] clarify responded:', params);

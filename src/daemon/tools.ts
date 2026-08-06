@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve, sep, relative } from 'node:path';
@@ -7,6 +7,7 @@ import { addFact, getFact, listFacts, searchFacts, updateFact, forgetFact, resto
 import { receipt } from './db.js';
 import { listSkills, readSkill, saveSkill } from './skills-lib.js';
 import { searchMessageRows } from './search.js';
+import { addJob, listJobs, removeJob, recordRun, claimDue } from './jobs.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -493,6 +494,174 @@ export const TOOLS: Record<string, BuiltinTool> = {
       // This tool doesn't return a string — it signals the agent loop to pause
       // The loop handles this by throwing a special signal that the caller catches
       throw new ClarifySignal(q, c, ctx.sessionId);
+    },
+  },
+
+  cronjob_add: {
+    risk: 'write',
+    spec: {
+      name: 'cronjob_add',
+      description: 'Schedule a recurring or one-shot task. The agent will be invoked at the specified time with the given prompt. Schedule forms: "every 15m", "every 2h", "every 1d", "daily@09:00", or "once@2026-08-06T09:00".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'kebab-case identifier for the job' },
+          schedule: { type: 'string', description: '"every 15m", "daily@09:00", or "once@2026-08-06T09:00"' },
+          prompt: { type: 'string', description: 'the prompt to send to the agent when the job fires' },
+          automaton: { type: 'string', enum: ['chat', 'dev'], description: 'which automaton to use' },
+          project: { type: 'string', description: 'project name for dev automaton (optional)' },
+        },
+        required: ['name', 'schedule', 'prompt'],
+      },
+    },
+    async handler(args) {
+      addJob({
+        name: String(args.name),
+        schedule: String(args.schedule),
+        prompt: String(args.prompt),
+        automaton: args.automaton === 'dev' ? 'dev' : undefined,
+        project: args.project ? String(args.project) : null,
+      });
+      return `scheduled "${args.name}" for ${args.schedule}`;
+    },
+  },
+
+  cronjob_list: {
+    risk: 'read',
+    spec: {
+      name: 'cronjob_list',
+      description: 'List all scheduled jobs with their next run time and status.',
+      parameters: { type: 'object', properties: {} },
+    },
+    async handler() {
+      const jobs = listJobs();
+      if (!jobs.length) return 'no scheduled jobs';
+      return jobs.map(j =>
+        `${j.name}: ${j.schedule} — next ${j.next_run ?? 'never'} (last: ${j.last_result ?? 'never'})`
+      ).join('\n');
+    },
+  },
+
+  code_run: {
+    risk: 'write',
+    spec: {
+      name: 'code_run',
+      description: 'Execute Python code in a sandboxed subprocess. Use for data analysis, calculations, chart generation, file processing, or any task requiring computation. Code runs with a 30-second timeout. Stdout and any file outputs are returned.',
+      parameters: {
+        type: 'object',
+        properties: {
+          code: { type: 'string', description: 'Python code to execute' },
+          filename: { type: 'string', description: 'optional descriptive name for the temp file (e.g. "analysis.py")' },
+          timeout: { type: 'number', description: 'timeout in seconds (default 30)' },
+        },
+        required: ['code'],
+      },
+    },
+    async handler(args, ctx) {
+      const code = String(args.code);
+      const name = String(args.filename ?? 'script.py');
+      const timeoutMs = (typeof args.timeout === 'number' ? args.timeout : 30) * 1000;
+      const tmpDir = join('/tmp', `heph-${ctx.sessionId ?? 'dev'}-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      const scriptPath = join(tmpDir, name);
+      writeFileSync(scriptPath, code);
+
+      let result = '';
+      let ok = false;
+      try {
+        const { stdout, stderr } = await execFileAsync('python3', [scriptPath], {
+          cwd: tmpDir,
+          timeout: timeoutMs,
+          maxBuffer: 2 * 1024 * 1024,
+          env: {
+            ...process.env,
+            PYTHONPATH: tmpDir,
+            // Prevent network access in sandbox
+            HTTP_PROXY: '127.0.0.1:9',
+            HTTPS_PROXY: '127.0.0.1:9',
+          },
+        });
+        result = stdout.trim();
+        if (stderr.trim()) result += '\n\n[stderr]\n' + stderr.trim();
+        ok = true;
+      } catch (err) {
+        result = err instanceof Error ? err.message : String(err);
+      } finally {
+        try { execSync(`rm -rf ${tmpDir}`); } catch {} // cleanup
+      }
+
+      // Receipt any files created in the temp dir
+      ctx.detail = result.slice(0, 4000);
+      return ok ? result : `[execution error] ${result}`;
+    },
+  },
+
+  browser_navigate: {
+    risk: 'write',
+    spec: {
+      name: 'browser_navigate',
+      description: 'Navigate a headless browser to a URL using Playwright. Returns the page title and visible text content. Use for checking websites, login portals, or pages that need JavaScript.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'URL to navigate to' },
+          waitFor: { type: 'string', description: 'optional selector to wait for before extracting text' },
+        },
+        required: ['url'],
+      },
+    },
+    async handler(args) {
+      const url = String(args.url);
+      const waitFor = args.waitFor ? String(args.waitFor) : null;
+      const script = `const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  await page.goto('${url.replace(/'/g, "\\'")}', { waitUntil: 'networkidle' });
+  ${waitFor ? `await page.waitForSelector('${waitFor.replace(/'/g, "\\'")}').catch(() => {});` : ''}
+  const title = await page.title();
+  const text = await page.evaluate(() => document.body.innerText.slice(0, 5000));
+  console.log(JSON.stringify({ title, text }));
+  await browser.close();
+})();`;
+      const tmpDir = join('/tmp', `heph-browser-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+      const scriptPath = join(tmpDir, 'nav.js');
+      writeFileSync(scriptPath, script);
+
+      let result = '';
+      try {
+        const { stdout } = await execFileAsync('node', [scriptPath], {
+          cwd: tmpDir,
+          timeout: 30000,
+          maxBuffer: 2 * 1024 * 1024,
+        });
+        const parsed = JSON.parse(stdout.trim());
+        result = `Title: ${parsed.title}\n\n---\n\n${parsed.text}`;
+      } catch (err) {
+        result = err instanceof Error ? err.message : String(err);
+        return `[browser error] ${result}`;
+      } finally {
+        try { execSync(`rm -rf ${tmpDir}`); } catch {}
+      }
+      return result;
+    },
+  },
+
+  cronjob_remove: {
+    risk: 'write',
+    spec: {
+      name: 'cronjob_remove',
+      description: 'Cancel a scheduled job by name.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+      },
+    },
+    async handler(args) {
+      removeJob(String(args.name));
+      return `removed job "${args.name}"`;
     },
   },
 };

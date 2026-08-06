@@ -48,6 +48,11 @@ function capabilities(): string {
 
 [CAPABILITIES — what you can actually do, right now]
 - Persistent memory: recall is automatic; a background pass captures durable facts. memory_save pins one deliberately. memory_search, memory_list, memory_update, memory_forget, memory_restore, memory_promote, memory_demote — the agent can now search, edit, forget, restore, and curate its own memory.
+- Session search: session_search queries past conversation transcripts via FTS5.
+- Scheduled jobs: cronjob_add, cronjob_list, cronjob_remove — recurring or one-shot tasks with agent prompts. The daemon heartbeat fires them automatically.
+- Code execution: code_run executes Python in a sandboxed subprocess (data analysis, calculations, file processing).
+- Browser automation: browser_navigate uses Playwright to visit URLs and extract text (JavaScript pages, login portals).
+- Clarify: the agent can ask you questions when uncertain (via the clarify tool) and resume with your answer.
 - Files and shell in your workspace root (see WORKSPACE below): fs_read, fs_write, fs_list, fs_grep, shell — every write and command passes the user's permission broker.
 ${web
     ? '- web_search and web_fetch: live web via ollama.com. Use them for anything current; cite what you fetch.'
@@ -503,13 +508,31 @@ export class Hephd {
 
       case 'clarify.respond': {
         if (typeof p.answer !== 'string') throw new Error('clarify.respond needs answer');
-        // Resume the agent with the user's answer injected
         const sessionId = Number(p.sessionId);
         if (!sessionId) throw new Error('clarify.respond needs sessionId');
-        // Save the answer as a user message and trigger a continuation
         saveMessage(sessionId, 'user', p.answer);
-        // The shell will re-call agent.run with the same session
         return { ok: true, sessionId };
+      }
+
+      case 'jobs.list':
+        return listJobs();
+
+      case 'jobs.add': {
+        if (!p.name || !p.schedule || !p.prompt) throw new Error('jobs.add needs name, schedule, prompt');
+        addJob({
+          name: String(p.name),
+          schedule: String(p.schedule),
+          prompt: String(p.prompt),
+          automaton: p.automaton === 'dev' ? 'dev' : undefined,
+          project: p.project ? String(p.project) : null,
+        });
+        return { ok: true };
+      }
+
+      case 'jobs.remove': {
+        if (!p.name) throw new Error('jobs.remove needs name');
+        removeJob(String(p.name));
+        return { ok: true };
       }
 
       case 'setup.status': {
