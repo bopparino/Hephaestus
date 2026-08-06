@@ -2,13 +2,19 @@
 
 A living backlog — everything we want to build, organized by phase. Move items up when they're in progress, strike them when they ship.
 
-## Phase 2 — Agent Execution (Next)
+## Phase 1 Follow-ups (Memory Core polish) ✅ Phase 1 shipped 2026-08-06
 
-- [ ] **Clarify** — Ask user mid-task when ambiguous (like Hermes' clarify tool)
+- [x] **Full memory CRUD** — search, list, update, forget, restore, promote, demote
+- [x] **Memory settings tab** — Shell Settings → Memory with search and listing
+- [x] **Dev-mode fallbacks** — localStorage-backed memory for file:// preview
+
+## Phase 2 — Agent Execution ✅ Phase 2 shipped 2026-08-06
+
+- [x] **Clarify** — Ask user mid-task when ambiguous (like Hermes' clarify tool)
+- [x] **Session Search** — FTS5 keyword search over conversation history
 - [ ] **Cron/Scheduled Jobs** — Recurring tasks, morning briefs, watchdogs (expand existing jobs.ts)
 - [ ] **Code Execution** — Python sandbox for data analysis, charts, validation
 - [ ] **Browser Automation** — Playwright MCP or native integration
-- [ ] **Session Search** — FTS5 over conversation history ("what did we say about X last month?")
 
 ## Phase 3 — Scale
 
@@ -24,7 +30,7 @@ A living backlog — everything we want to build, organized by phase. Move items
 - [ ] **Conflict Resolution** — When agent saves a fact that contradicts existing
 - [ ] **Dream Consolidation UI** — Surface nightly merge suggestions for user review
 
-## Phase 1 Follow-ups (Memory Core polish)
+## Memory Core UI Polish (Phase 1 follow-ups)
 
 - [ ] **Inline edit** — Click a fact in Settings → Memory to edit content/category/importance
 - [ ] **Promote/demote buttons** — ⭐ toggle on each fact row
