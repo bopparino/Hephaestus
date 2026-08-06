@@ -138,6 +138,71 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
   `,
+  // v8 — The Soul: self-state, intentions, opinions, quirks.
+  // GlasHaus brain transplant. Ten dimensions of disposition + relational
+  // on bounded EWMA; intentions with horizons; opinions with evidence;
+  // quirks with observation counts. This is what makes memory lived.
+  `
+  -- Self-state: ten dimensions, two EWMA layers (disposition α=0.05,
+  -- relational α=0.15), hard floor/ceiling at 0.05/0.95.
+  CREATE TABLE IF NOT EXISTS self_state (
+    id INTEGER PRIMARY KEY,
+    dimension TEXT NOT NULL UNIQUE,
+    disposition REAL NOT NULL DEFAULT 0.5,
+    relational REAL NOT NULL DEFAULT 0.5,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  INSERT OR IGNORE INTO self_state (dimension) VALUES
+    ('warmth'), ('curiosity'), ('patience'), ('playfulness'),
+    ('certainty'), ('openness'), ('energy'), ('protectiveness'),
+    ('generosity'), ('mischief');
+
+  -- Drift events: every self-state change, with evidence citation
+  CREATE TABLE IF NOT EXISTS self_state_events (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    dimension TEXT NOT NULL,
+    old_disposition REAL,
+    new_disposition REAL,
+    old_relational REAL,
+    new_relational REAL,
+    evidence TEXT NOT NULL DEFAULT '',
+    source_session INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_selfstate_dim ON self_state_events(dimension);
+
+  -- Intentions: things she wants, with horizons
+  CREATE TABLE IF NOT EXISTS intentions (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    content TEXT NOT NULL,
+    horizon TEXT NOT NULL DEFAULT 'soon',
+    fulfilled INTEGER NOT NULL DEFAULT 0,
+    lapsed INTEGER NOT NULL DEFAULT 0,
+    fulfilled_at TEXT,
+    source TEXT NOT NULL DEFAULT 'dream'
+  );
+
+  -- Opinions: formed stances on topics
+  CREATE TABLE IF NOT EXISTS opinions (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    topic TEXT NOT NULL UNIQUE,
+    stance TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    evidence TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Quirks: self-observed patterns (×3+ to become voice line)
+  CREATE TABLE IF NOT EXISTS quirks (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    pattern TEXT NOT NULL UNIQUE,
+    observations INTEGER NOT NULL DEFAULT 1,
+    last_seen TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 let db: Database.Database | null = null;

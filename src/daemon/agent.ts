@@ -2,6 +2,7 @@ import type { Config } from './config.js';
 import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { maybeCompact } from './compact.js';
 import { renderCore } from './memory.js';
+import { renderPersona, renderSelfState, renderIntentions, renderOpinions, renderQuirks } from './soul.js';
 import { TOOLS, type BuiltinTool, type ToolContext, ClarifySignal } from './tools.js';
 import { WEB_TOOLS, webAvailable } from './web.js';
 import { mcpToolbox } from './mcp.js';

@@ -10,6 +10,7 @@ import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.j
 import { loadSkins } from './skins.js';
 import { initEmbeddings, embed } from './embeddings.js';
 import { addFact, coreFacts, forgetFact, recallEpisodes, recallFacts, renderCore, renderRecall, searchFacts, listFacts, getFact, updateFact, restoreFact, setCore } from './memory.js';
+import { renderPersona, renderSelfState, renderIntentions, renderOpinions, renderQuirks, ensureDefaultPersona } from './soul.js';
 import { bumpCaptureCounter, isTrivial, runCapture } from './capture.js';
 import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
@@ -87,6 +88,8 @@ export class Hephd {
     this.providers = new Providers(cfg);
     this.broker.setMode(cfg.permissions.mode);
     initEmbeddings(cfg);
+    // Seed the GlasHaus persona files on first boot — identity, soul, user, voice.
+    ensureDefaultPersona(cfg.user.name);
     // MCP servers connect in the background; their tools appear in the
     // agent's toolbox as each one comes up. A failed server is a receipt,
     // not a crash.
@@ -883,6 +886,17 @@ export class Hephd {
       const core = renderCore(sessionScope(sessionId), this.cfg.memory.coreBudget);
       const identity = `${IDENTITY}${capabilities()}${voice}`;
       snapshot = (core ? `${identity}\n\n${core}` : identity);
+
+      // ---- GlasHaus soul injection ----
+      const persona = renderPersona();
+      const selfState = renderSelfState();
+      const intentions = renderIntentions();
+      const opinions = renderOpinions();
+      const quirks = renderQuirks();
+      const soul = [persona, selfState, intentions, opinions, quirks].filter(Boolean).join('\n\n');
+      if (soul) snapshot += `\n\n${soul}`;
+      // ---- end soul injection ----
+
       this.systemSnapshots.set(sessionId, snapshot);
     }
     return snapshot;
