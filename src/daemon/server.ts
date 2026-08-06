@@ -52,6 +52,8 @@ function capabilities(): string {
 - Scheduled jobs: cronjob_add, cronjob_list, cronjob_remove — recurring or one-shot tasks with agent prompts. The daemon heartbeat fires them automatically.
 - Code execution: code_run executes Python in a sandboxed subprocess (data analysis, calculations, file processing).
 - Browser automation: browser_navigate uses Playwright to visit URLs and extract text (JavaScript pages, login portals).
+- Text-to-speech: text_to_speech converts text to audio using macOS say.
+- Messaging: send_message sends iMessage/SMS via macOS Messages app.
 - Clarify: the agent can ask you questions when uncertain (via the clarify tool) and resume with your answer.
 - Files and shell in your workspace root (see WORKSPACE below): fs_read, fs_write, fs_list, fs_grep, shell — every write and command passes the user's permission broker.
 ${web

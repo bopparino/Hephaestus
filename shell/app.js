@@ -200,6 +200,14 @@ function devRpc(method, params) {
   if (method === 'browser_navigate') {
     return Promise.resolve(`[dev mode] browser_navigate would visit: ${params.url}\n(use daemon for real browser)`);
   }
+  // TTS fallback
+  if (method === 'text_to_speech') {
+    return Promise.resolve(`[dev mode] text_to_speech would say: "${String(params.text ?? '').slice(0, 100)}"`);
+  }
+  // Messaging fallback
+  if (method === 'send_message') {
+    return Promise.resolve(`[dev mode] send_message would send to ${params.to}: "${String(params.body ?? '').slice(0, 100)}"`);
+  }
   // Clarify fallback — just log to console
   if (method === 'clarify.respond') {
     console.log('[dev] clarify responded:', params);

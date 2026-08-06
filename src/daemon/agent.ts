@@ -14,7 +14,7 @@ import type { ChatMessage, ToolCall } from '../providers/types.js';
 
 const MAX_ITERATIONS = 15; // model calls per run — a budget, not a hope
 
-const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory_save', 'memory_search', 'memory_list', 'memory_update', 'memory_forget', 'memory_restore', 'memory_promote', 'memory_demote', 'skills_list', 'skill_view', 'skill_save', 'session_search', 'clarify', 'cronjob_add', 'cronjob_list', 'cronjob_remove', 'code_run', 'browser_navigate'];
+const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory_save', 'memory_search', 'memory_list', 'memory_update', 'memory_forget', 'memory_restore', 'memory_promote', 'memory_demote', 'skills_list', 'skill_view', 'skill_save', 'session_search', 'clarify', 'cronjob_add', 'cronjob_list', 'cronjob_remove', 'code_run', 'browser_navigate', 'text_to_speech', 'send_message'];
 
 // Voice is chrome, not craft (DESIGN §7): this charter is locked neutral.
 // No persona, no voice config, ever enters the agent lane — everything an

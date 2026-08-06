@@ -664,6 +664,67 @@ export const TOOLS: Record<string, BuiltinTool> = {
       return `removed job "${args.name}"`;
     },
   },
+
+  text_to_speech: {
+    risk: 'read',
+    spec: {
+      name: 'text_to_speech',
+      description: 'Convert text to speech audio using the macOS say command. Use to voice responses, read summaries aloud, or provide audio feedback. Returns the path to the generated audio file.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'text to speak' },
+          voice: { type: 'string', description: 'optional macOS voice name (e.g. "Samantha", "Alex")' },
+          rate: { type: 'number', description: 'words per minute, default 180' },
+        },
+        required: ['text'],
+      },
+    },
+    async handler(args) {
+      const text = String(args.text);
+      const voice = args.voice ? String(args.voice) : 'Samantha';
+      const rate = typeof args.rate === 'number' ? args.rate : 180;
+      const outPath = join('/tmp', `heph-tts-${Date.now()}.aiff`);
+      try {
+        await execFileAsync('say', ['-v', voice, '-r', String(rate), '-o', outPath, text], { timeout: 30000 });
+        return `Spoke: "${text.slice(0, 100)}...". Audio saved to: ${outPath}`;
+      } catch (err) {
+        return `[TTS error] ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+  },
+
+  send_message: {
+    risk: 'write',
+    spec: {
+      name: 'send_message',
+      description: 'Send an iMessage or SMS to a phone number or email via the macOS Messages app. Use for notifications, alerts, or reaching out to contacts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'phone number (e.g. +15551234567) or Apple ID email' },
+          body: { type: 'string', description: 'message text' },
+        },
+        required: ['to', 'body'],
+      },
+    },
+    async handler(args) {
+      const to = String(args.to);
+      const body = String(args.body);
+      try {
+        await execFileAsync('osascript', ['-e', `tell application "Messages" to send "${body.replace(/"/g, '\\"')}" to buddy "${to}"`], { timeout: 15000 });
+        return `sent message to ${to}`;
+      } catch (err) {
+        // Fallback: try imsg CLI if available
+        try {
+          await execFileAsync('imsg', ['-s', to, body], { timeout: 15000 });
+          return `sent message to ${to} via imsg`;
+        } catch {
+          return `[send error] ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+    },
+  },
 };
 
 TOOLS.skills_list = {
