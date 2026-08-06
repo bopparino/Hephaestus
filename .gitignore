@@ -13,6 +13,7 @@ dist/
 # licensed fonts (PP Mondwest is personal-use; never commit font binaries
 # that aren't OFL/Apache — shipped fonts get vendored deliberately later)
 assets/fonts/private/
+shell/userfonts/
 
 # os noise
 .DS_Store

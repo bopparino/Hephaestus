@@ -22,8 +22,17 @@ export interface SearchHit {
   closing: MessageRow[];
 }
 
+/** Message-level search — returns raw matching messages for session_search tool */
+export interface MessageHit {
+  id: number;
+  session_id: number;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
 /** Preserve balanced quoted phrases; strip FTS5 operators; quote dotted and
- *  hyphenated terms so \`my-app.config.ts\` doesn't explode into implicit ANDs.
+ *  hyphenated terms so `my-app.config.ts` doesn't explode into implicit ANDs.
  *  OR by default — multi-word queries should widen, not silently narrow. */
 export function sanitizeFtsQuery(input: string): string | null {
   const phrases: string[] = [];
@@ -53,6 +62,20 @@ export function sessionBookends(sessionId: number): { title: string | null; open
     "SELECT * FROM (SELECT id, session_id, role, content, created_at FROM messages WHERE session_id = ? AND role IN ('user','assistant') ORDER BY id DESC LIMIT 3) ORDER BY id",
   ).all(sessionId) as MessageRow[]).filter(m => !opening.some(o => o.id === m.id));
   return { title: session?.title ?? null, opening, closing };
+}
+
+export function searchMessageRows(query: string, limit = 20): MessageHit[] {
+  const db = getDb();
+  const q = sanitizeFtsQuery(query);
+  if (!q) return [];
+  try {
+    return db.prepare(`
+      SELECT m.id, m.session_id, m.role, m.content, m.created_at
+      FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid
+      WHERE messages_fts MATCH ? AND m.role IN ('user','assistant')
+      ORDER BY bm25(messages_fts) LIMIT ?
+    `).all(q, limit) as MessageHit[];
+  } catch { return []; }
 }
 
 export function searchMessages(query: string, limit = 5): SearchHit[] {

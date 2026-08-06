@@ -19,7 +19,7 @@ import { makeDelegateTool } from './agent.js';
 import { maybeCompact } from './compact.js';
 import type { Asker } from './permissions.js';
 import { webAvailable, WEB_TOOLS } from './web.js';
-import { TOOLS, type BuiltinTool, type ToolContext } from './tools.js';
+import { TOOLS, type BuiltinTool, type ToolContext, ClarifySignal } from './tools.js';
 import type { ToolCall } from '../providers/types.js';
 import { addJob, listJobs, getJob, removeJob, claimDue, recordRun, type Job } from './jobs.js';
 import { deliverToOwner, startTelegram, channelStatus } from './channels/telegram.js';
@@ -501,6 +501,17 @@ export class Hephd {
         return { ok: true };
       }
 
+      case 'clarify.respond': {
+        if (typeof p.answer !== 'string') throw new Error('clarify.respond needs answer');
+        // Resume the agent with the user's answer injected
+        const sessionId = Number(p.sessionId);
+        if (!sessionId) throw new Error('clarify.respond needs sessionId');
+        // Save the answer as a user message and trigger a continuation
+        saveMessage(sessionId, 'user', p.answer);
+        // The shell will re-call agent.run with the same session
+        return { ok: true, sessionId };
+      }
+
       case 'setup.status': {
         const row = getDb().prepare("SELECT value FROM meta WHERE key = 'setup_done'").get();
         return { done: !!row };
@@ -722,7 +733,14 @@ export class Hephd {
               ask: askReq => this.send(ws, { event: 'approval.request', params: { reqId: req.id, ...askReq, sessionId } }),
               notify: (event, params) => this.broadcast(event, params),
             },
-          ).then(result => ({ sessionId, ...result })),
+          ).then(result => ({ sessionId, ...result }))
+          .catch(err => {
+            if (err instanceof ClarifySignal) {
+              this.send(ws, { event: 'clarify.request', params: { reqId: req.id, sessionId, question: err.question, context: err.context } });
+              return { sessionId, text: '', iterations: 0, toolCalls: 0, clarify: true, question: err.question };
+            }
+            throw err;
+          }),
         );
       }
 

@@ -178,6 +178,15 @@ function devRpc(method, params) {
     const q = (params.query ?? '').toLowerCase();
     return Promise.resolve(facts.filter(f => f.active && f.content.toLowerCase().includes(q)).slice(0, params.limit ?? 20));
   }
+  // Session search fallback (empty — no real sessions in dev mode)
+  if (method === 'session.search' || method === 'session_search') {
+    return Promise.resolve([]);
+  }
+  // Clarify fallback — just log to console
+  if (method === 'clarify.respond') {
+    console.log('[dev] clarify responded:', params);
+    return Promise.resolve({ ok: true });
+  }
   // Generic fallback for everything else
   return Promise.reject(new Error(`dev mode: ${method} not implemented`));
 }
@@ -264,6 +273,30 @@ function onEvent(event, p) {
     $('approval-summary').textContent = p.summary;
     openOverlay('approval-modal');
     $('overlay').dataset.approvalId = p.approvalId;
+  } else if (event === 'clarify.request') {
+    // Agent needs more info — show inline input in the chat
+    if (!liveBody) startLive();
+    const prose = liveProse();
+    const div = document.createElement('div');
+    div.className = 'clarify-box';
+    div.innerHTML = `
+      <div class="clarify-q">${esc(p.question)}</div>
+      <div class="clarify-ctx">${esc(p.context || '')}</div>
+      <input class="clarify-in" placeholder="Your answer…">
+      <button class="clarify-send">Send</button>`;
+    prose.appendChild(div);
+    const input = div.querySelector('.clarify-in');
+    const btn = div.querySelector('.clarify-send');
+    btn.onclick = () => {
+      const answer = input.value.trim();
+      if (!answer) return;
+      rpc('clarify.respond', { sessionId: p.sessionId, answer });
+      div.remove();
+      // Inject user's answer as a new message
+      appendTurn('user', answer);
+    };
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') btn.click(); });
+    $('view').scrollTop = $('view').scrollHeight;
   } else if (event === 'skin.changed') {
     applySkin(p.skin);
   } else if (event === 'session.updated') {

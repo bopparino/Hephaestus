@@ -6,8 +6,19 @@ import type { ToolSpec } from '../providers/types.js';
 import { addFact, getFact, listFacts, searchFacts, updateFact, forgetFact, restoreFact, setCore } from './memory.js';
 import { receipt } from './db.js';
 import { listSkills, readSkill, saveSkill } from './skills-lib.js';
+import { searchMessageRows } from './search.js';
 
 const execFileAsync = promisify(execFile);
+
+// ---- agent-level signals ----------------------------------------------------
+
+/** Thrown by the clarify tool to pause the agent loop and ask the user */
+export class ClarifySignal extends Error {
+  constructor(public question: string, public context: string, public sessionId: number) {
+    super(`clarify: ${question}`);
+    this.name = 'ClarifySignal';
+  }
+}
 
 // The narrow waist: few tools, small schemas — every core tool costs
 // tokens on every call (the Hermes lesson). Capability arrives later as
@@ -436,6 +447,52 @@ export const TOOLS: Record<string, BuiltinTool> = {
       if (!id) throw new Error('id required');
       setCore(id, false, String(args.reason ?? 'demoted via tool'));
       return `demoted fact #${id} from core`;
+    },
+  },
+
+  session_search: {
+    risk: 'read',
+    spec: {
+      name: 'session_search',
+      description: 'Search conversation history for a keyword or phrase. Returns matching messages with session IDs and timestamps. Use to recall what was said about a topic in past sessions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'keyword or phrase to search for' },
+          limit: { type: 'number', description: 'max results, default 20' },
+        },
+        required: ['query'],
+      },
+    },
+    async handler(args) {
+      const results = searchMessageRows(String(args.query), typeof args.limit === 'number' ? args.limit : 20);
+      if (!results.length) return '(no matching messages)';
+      return results.map(r =>
+        `[session ${r.session_id}, ${r.created_at}] ${r.role}: ${r.content.slice(0, 200)}${r.content.length > 200 ? '...' : ''}`
+      ).join('\n');
+    },
+  },
+
+  clarify: {
+    risk: 'read',
+    spec: {
+      name: 'clarify',
+      description: 'Ask the user a question when something is ambiguous, unclear, or requires a decision. Use sparingly — only when you genuinely cannot proceed without more information. The user\'s reply will be injected into the conversation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'the question to ask the user' },
+          context: { type: 'string', description: 'brief context about why you\'re asking' },
+        },
+        required: ['question'],
+      },
+    },
+    async handler(args, ctx) {
+      const q = String(args.question);
+      const c = String(args.context ?? '');
+      // This tool doesn't return a string — it signals the agent loop to pause
+      // The loop handles this by throwing a special signal that the caller catches
+      throw new ClarifySignal(q, c, ctx.sessionId);
     },
   },
 };

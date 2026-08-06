@@ -614,6 +614,47 @@ textarea.voice-notes {
 
 .set-save { margin-top: 18px; display: flex; justify-content: flex-end; }
 .set-save .send { padding: 7px 18px; }
+.clarify-box {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-left: 2px solid var(--oxblood);
+  background: var(--stone);
+}
+.clarify-q {
+  font-size: 13.5px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.clarify-ctx {
+  font-size: 12px;
+  color: var(--ink-4);
+  margin-bottom: 10px;
+}
+.clarify-in {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+  outline: none;
+}
+.clarify-in:focus {
+  border-color: var(--oxblood-hover);
+}
+.clarify-send {
+  margin-top: 8px;
+  padding: 6px 16px;
+  font-size: 12px;
+  background: var(--accent);
+  color: var(--paper);
+  border: none;
+  cursor: pointer;
+}
+.clarify-send:hover {
+  background: var(--accent-hover);
+}
 #perm-btn {
   font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-4);
   padding: 5px 9px;

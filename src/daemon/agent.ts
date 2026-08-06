@@ -2,7 +2,7 @@ import type { Config } from './config.js';
 import { createSession, getDb, receipt, saveMessage, sessionScope } from './db.js';
 import { maybeCompact } from './compact.js';
 import { renderCore } from './memory.js';
-import { TOOLS, type BuiltinTool, type ToolContext } from './tools.js';
+import { TOOLS, type BuiltinTool, type ToolContext, ClarifySignal } from './tools.js';
 import { WEB_TOOLS, webAvailable } from './web.js';
 import { mcpToolbox } from './mcp.js';
 import type { AskRequest, PermissionBroker } from './permissions.js';
@@ -14,7 +14,7 @@ import type { ChatMessage, ToolCall } from '../providers/types.js';
 
 const MAX_ITERATIONS = 15; // model calls per run — a budget, not a hope
 
-const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory_save', 'skills_list', 'skill_view', 'skill_save'];
+const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory_save', 'memory_search', 'memory_list', 'memory_update', 'memory_forget', 'memory_restore', 'memory_promote', 'memory_demote', 'skills_list', 'skill_view', 'skill_save', 'session_search', 'clarify'];
 
 // Voice is chrome, not craft (DESIGN §7): this charter is locked neutral.
 // No persona, no voice config, ever enters the agent lane — everything an
@@ -149,6 +149,7 @@ export async function runAgent(
             result = await tool.handler(call.args, ctx);
             ok = true;
           } catch (err) {
+            if (err instanceof ClarifySignal) throw err; // propagate to pause loop
             result = `[tool error] ${err instanceof Error ? err.message : String(err)}`;
           }
         }
