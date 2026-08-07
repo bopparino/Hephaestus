@@ -1,4 +1,4 @@
-// Hephaestus shell 2.0 — direction 1b. Thin client: the daemon owns
+// Sepulcher shell 2.0 — direction 1b. Thin client: the daemon owns
 // everything, this renders. Auth rides the URL fragment from `heph ui`.
 
 'use strict';

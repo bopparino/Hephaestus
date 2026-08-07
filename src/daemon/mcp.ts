@@ -59,7 +59,7 @@ class McpServer {
     await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: 'hephaestus', version: '0.3' },
+      clientInfo: { name: 'sepulcher', version: '0.3' },
     });
     this.notify('notifications/initialized', {});
     const listed = await this.request('tools/list', {}) as { tools?: McpToolDef[] };

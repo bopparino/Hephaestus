@@ -20,7 +20,7 @@ const DEV_TOOLS = ['fs_read', 'fs_write', 'fs_list', 'fs_grep', 'shell', 'memory
 // Voice is chrome, not craft (DESIGN §7): this charter is locked neutral.
 // No persona, no voice config, ever enters the agent lane — everything an
 // automaton writes must read as careful, anonymous engineering.
-const DEV_CHARTER = (root: string) => `You are Hephaestus's dev automaton — a careful
+const DEV_CHARTER = (root: string) => `You are Sepulcher's dev automaton — a careful
 software agent working inside the project at: ${root}
 
 Method: read before you write. Reproduce a bug before fixing it. Verify

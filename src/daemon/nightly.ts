@@ -7,6 +7,7 @@ import { backfillEmbeddings } from './embeddings.js';
 import { foldBacklog } from './folding.js';
 import type { Providers } from '../providers/roles.js';
 import { paths } from './paths.js';
+import { runDreamPass } from './dream.js';
 
 // The secular dream slot: consolidation, folding backlog, embedding
 // backfill, backup-with-integrity-check. Everything soft, everything
@@ -83,8 +84,17 @@ export async function runNightly(cfg: Config, providers: Providers): Promise<Rec
   }
   const { merged, decayed } = consolidate();
   const embedded = await backfillEmbeddings();
+
+  // ---- Dream pass: the soul feels at night ----
+  let dreamResult: unknown = null;
+  try {
+    dreamResult = await runDreamPass(cfg, providers);
+  } catch (err) {
+    console.error('[nightly] dream pass failed:', err);
+  }
+
   const bak = backup();
-  const summary = { episodes, merged, decayed, embedded, backup: bak.file, backupOk: bak.ok };
+  const summary = { episodes, merged, decayed, embedded, dream: dreamResult, backup: bak.file, backupOk: bak.ok };
   receipt('nightly', summary);
   db.prepare("INSERT INTO meta (key, value) VALUES ('nightly_last', date('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
   return summary;

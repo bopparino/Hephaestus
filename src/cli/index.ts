@@ -169,7 +169,7 @@ async function cmdChat(message?: string, project?: string): Promise<void> {
       return;
     }
 
-    console.log(`${accent}HEPHAESTUS${RESET} ${muted}· the forge is lit · /quit to leave${RESET}`);
+    console.log(`${accent}SEPULCHER${RESET} ${muted}· the void is warm · /quit to leave${RESET}`);
     const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: `${accent}❯${RESET} ` });
     rl.prompt();
     for await (const line of rl) {
@@ -406,7 +406,7 @@ async function purge(rest: string[]): Promise<void> {
 
 async function uninstall(rest: string[]): Promise<void> {
   const ok = await confirmWord('uninstall',
-    'This removes Hephaestus entirely: the daemon, the brain, config,\n' +
+    'This removes Sepulcher entirely: the daemon, the brain, config,\n' +
     'secrets, skills, skins — all of ~/.hephaestus — plus the heph command.\n' +
     'Files inside your project folders are NOT touched.', rest);
   if (!ok) { console.log('nothing removed'); return; }
@@ -420,7 +420,7 @@ async function uninstall(rest: string[]): Promise<void> {
   const shim = joinPath(homedir(), '.local', 'bin', 'heph');
   if (exists(shim)) rmSync(shim, { force: true });
   rmSync(paths.home, { recursive: true, force: true });
-  console.log('hephaestus removed. the forge is cold — thank you for the work.');
+  console.log('sepulcher removed. the void is quiet — thank you for the work.');
 }
 
 // ---- main -------------------------------------------------------------------

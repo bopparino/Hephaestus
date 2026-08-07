@@ -60,7 +60,7 @@ const DEFAULTS: Config = {
   permissions: { mode: 'ask' },
 };
 
-const DEFAULT_TOML = `# Hephaestus — ~/.hephaestus/config.toml
+const DEFAULT_TOML = `# Sepulcher — ~/.hephaestus/config.toml
 # Model roles bind "provider/model". Providers: ollama, anthropic.
 # "ollama/auto" picks the first chat-capable model Ollama reports.
 
@@ -88,7 +88,7 @@ skin_light = "daybreak"
 /** Regenerate config.toml from the live config. Settings-panel writes come
  *  through here; the generated file keeps its guidance comments. */
 export function saveConfig(cfg: Config): void {
-  const toml = `# Hephaestus — ~/.hephaestus/config.toml
+  const toml = `# Sepulcher — ~/.hephaestus/config.toml
 # Model roles bind "provider/model". Providers: ollama, anthropic.
 # "ollama/auto" picks the first chat-capable model Ollama reports.
 

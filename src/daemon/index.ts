@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   const port = await daemon.listen(cfg.daemon.port);
   const state: DaemonState = { pid: process.pid, port, startedAt: new Date().toISOString() };
   writeFileSync(paths.state, JSON.stringify(state));
-  log(`hephd listening on 127.0.0.1:${port} — the forge is lit`);
+  log(`hephd listening on 127.0.0.1:${port} — the void is warm`);
 
   const telegram = startTelegram(cfg, daemon);
   if (telegram) log('telegram channel up (owner-gated)');

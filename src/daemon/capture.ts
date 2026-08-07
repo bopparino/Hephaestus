@@ -56,7 +56,7 @@ export async function runCapture(cfg: Config, providers: Providers, sessionId: n
   const scopeNote = scope === 'global'
     ? ''
     : `\nThis conversation belongs to the "${scope.slice(8)}" project. Facts default to that project's scope; mark a fact {"global": true} ONLY if it is about ${name} themselves or clearly crosses projects (identity, standing preferences).`;
-  const transcript = recent.map(m => `${m.role === 'user' ? name : 'Hephaestus'}: ${m.content}`).join('\n');
+  const transcript = recent.map(m => `${m.role === 'user' ? name : 'Sepulcher'}: ${m.content}`).join('\n');
   const known = (db.prepare('SELECT content FROM facts WHERE active = 1 ORDER BY updated_at DESC LIMIT 60').all() as { content: string }[])
     .map(f => `- ${f.content}`).join('\n');
   const core = coreFacts('global');
@@ -67,7 +67,7 @@ export async function runCapture(cfg: Config, providers: Providers, sessionId: n
   const result = await utilityJson<CaptureResult>(providers, [
     {
       role: 'system',
-      content: `You are the memory system for Hephaestus, ${name}'s local AI workspace. Two jobs, one pass.
+      content: `You are the memory system for Sepulcher, ${name}'s local AI workspace. Two jobs, one pass.
 
 Today's date: ${today}.
 

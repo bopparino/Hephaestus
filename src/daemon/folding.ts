@@ -24,13 +24,13 @@ export async function foldBacklog(cfg: Config, providers: Providers, sessionId: 
 
     const name = cfg.user.name;
     const transcript = backlog
-      .map(m => `[${m.created_at}] ${m.role === 'user' ? name : 'Hephaestus'}: ${m.content}`)
+      .map(m => `[${m.created_at}] ${m.role === 'user' ? name : 'Sepulcher'}: ${m.content}`)
       .join('\n');
 
     const result = await utilityJson<{ summary?: string; salience?: number }>(providers, [
       {
         role: 'system',
-        content: `You are the memory system for Hephaestus, ${name}'s AI workspace. Condense this conversation chunk into one dense episodic note in a neutral third-person notebook register ("${name} and Hephaestus worked on…"). Keep concrete details: names, decisions and their reasons, file paths, numbers, open questions. 100-250 words. Rate salience 0-1 (0.1 = routine, 0.9 = decisions that shape the work for months).
+        content: `You are the memory system for Sepulcher, ${name}'s AI workspace. Condense this conversation chunk into one dense episodic note in a neutral third-person notebook register ("${name} and Sepulcher worked on…"). Keep concrete details: names, decisions and their reasons, file paths, numbers, open questions. 100-250 words. Rate salience 0-1 (0.1 = routine, 0.9 = decisions that shape the work for months).
 
 Respond as JSON: {"summary": "...", "salience": 0.5}`,
       },
