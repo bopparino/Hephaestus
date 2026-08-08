@@ -702,7 +702,7 @@ export const TOOLS: Record<string, BuiltinTool> = {
       parameters: {
         type: 'object',
         properties: {
-          to: { type: 'string', description: 'phone number (e.g. +15551234567) or Apple ID email' },
+          to: { type: 'string', description: 'phone number (e.g. +155****4567) or Apple ID email' },
           body: { type: 'string', description: 'message text' },
         },
         required: ['to', 'body'],
@@ -723,6 +723,111 @@ export const TOOLS: Record<string, BuiltinTool> = {
           return `[send error] ${err instanceof Error ? err.message : String(err)}`;
         }
       }
+    },
+  },
+
+  // ---- Desktop automation tools (macOS) ----
+  desktop_screenshot: {
+    risk: 'read',
+    spec: {
+      name: 'desktop_screenshot',
+      description: 'Take a screenshot of the macOS desktop. Use to capture errors, verify UI state, or share what you see.',
+      parameters: {
+        type: 'object',
+        properties: {
+          window: { type: 'string', description: 'optional: app name to capture specific window' },
+        },
+      },
+    },
+    async handler(args) {
+      const { desktopScreenshot } = await import('./desktop.js');
+      const file = desktopScreenshot(args?.window ? { window: String(args.window) } : undefined);
+      return `screenshot saved: ${file}`;
+    },
+  },
+
+  desktop_click: {
+    risk: 'write',
+    spec: {
+      name: 'desktop_click',
+      description: 'Click at screen coordinates (x, y) or on a named UI element in an app. Use sparingly — coordinates are fragile.',
+      parameters: {
+        type: 'object',
+        properties: {
+          x: { type: 'number', description: 'screen x coordinate' },
+          y: { type: 'number', description: 'screen y coordinate' },
+          element: { type: 'string', description: 'UI element name (e.g. "OK", "Submit")' },
+          app: { type: 'string', description: 'application name (required with element)' },
+        },
+        required: [], // either x+y or element+app
+      },
+    },
+    async handler(args) {
+      const { desktopClick } = await import('./desktop.js');
+      if (typeof args.x === 'number' && typeof args.y === 'number') {
+        return desktopClick({ x: args.x, y: args.y });
+      }
+      if (typeof args.element === 'string' && typeof args.app === 'string') {
+        return desktopClick({ element: String(args.element), app: String(args.app) });
+      }
+      return 'desktop_click needs either (x, y) or (element, app)';
+    },
+  },
+
+  desktop_type: {
+    risk: 'write',
+    spec: {
+      name: 'desktop_type',
+      description: 'Type text into the currently focused macOS application.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'text to type' },
+        },
+        required: ['text'],
+      },
+    },
+    async handler(args) {
+      const { desktopType } = await import('./desktop.js');
+      return desktopType(String(args.text));
+    },
+  },
+
+  desktop_keystroke: {
+    risk: 'write',
+    spec: {
+      name: 'desktop_keystroke',
+      description: 'Send a keyboard shortcut (e.g. "command+tab", "control+c"). Use for app switching, copy/paste, etc.',
+      parameters: {
+        type: 'object',
+        properties: {
+          keys: { type: 'string', description: 'key combo like "command+tab" or "control+c"' },
+        },
+        required: ['keys'],
+      },
+    },
+    async handler(args) {
+      const { desktopKeystroke } = await import('./desktop.js');
+      return desktopKeystroke(String(args.keys));
+    },
+  },
+
+  desktop_focus: {
+    risk: 'read',
+    spec: {
+      name: 'desktop_focus',
+      description: 'Focus (activate) an application by name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          app: { type: 'string', description: 'application name (e.g. "Safari", "Terminal")' },
+        },
+        required: ['app'],
+      },
+    },
+    async handler(args) {
+      const { desktopFocus } = await import('./desktop.js');
+      return desktopFocus(String(args.app));
     },
   },
 };

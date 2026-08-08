@@ -56,6 +56,7 @@ function capabilities(): string {
 - Browser automation: browser_navigate uses Playwright to visit URLs and extract text (JavaScript pages, login portals).
 - Text-to-speech: text_to_speech converts text to audio using macOS say.
 - Messaging: send_message sends iMessage/SMS via macOS Messages app.
+- Desktop automation: desktop_screenshot, desktop_click, desktop_type, desktop_keystroke, desktop_focus — drive the macOS UI for testing, screenshots, and interaction.
 - Clarify: the agent can ask you questions when uncertain (via the clarify tool) and resume with your answer.
 - Files and shell in your workspace root (see WORKSPACE below): fs_read, fs_write, fs_list, fs_grep, shell — every write and command passes the user's permission broker.
 ${web
