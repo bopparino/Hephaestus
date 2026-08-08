@@ -23,14 +23,14 @@ A living backlog — everything we want to build, organized by phase. Move items
 - [x] **iMessage Channel** — send_message via macOS Messages app
 - [x] **Skills System** — skills_list, skill_view, skill_save already exist; enhanced by delegate
 
-## Phase 4 — Presence ✅ Phase 4 shipped 2026-08-06 (core soul)
+## Phase 4 — Presence ✅ Phase 4 shipped 2026-08-07 (soul + dream + grow)
 
 - [x] **GlasHaus brain transplant** — self-state, intentions, opinions, quirks schema
 - [x] **Persona files** — soul.md, identity.md, user.md, voice.md on disk
 - [x] **Soul injection** — persona + self-state rendered into system prompt
-- [ ] **Dream pass** — nightly salience-weighted replay + realizations (needs model call)
+- [x] **Dream pass** — nightly salience-weighted replay + realizations + affect rating
+- [x] **Grow mode** — weekly self-authorship, revises soul.md from evidence
 - [ ] **Heartbeat** — autonomous outreach engine (needs model call)
-- [ ] **Grow mode** — self-authorship, wander pass (needs model call)
 - [ ] **Desktop Automation** — Drive macOS UI (click, type, screenshot)
 - [ ] **Memory Import** — Bulk import from GlasHaus `~/.glashaus/memory/`
 - [ ] **Conflict Resolution** — When agent saves a fact that contradicts existing
