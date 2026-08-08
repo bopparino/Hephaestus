@@ -8,6 +8,7 @@ import { foldBacklog } from './folding.js';
 import type { Providers } from '../providers/roles.js';
 import { paths } from './paths.js';
 import { runDreamPass } from './dream.js';
+import { runGrowthPass } from './growth.js';
 
 // The secular dream slot: consolidation, folding backlog, embedding
 // backfill, backup-with-integrity-check. Everything soft, everything
@@ -93,8 +94,23 @@ export async function runNightly(cfg: Config, providers: Providers): Promise<Rec
     console.error('[nightly] dream pass failed:', err);
   }
 
+  // ---- Growth pass: the soul revises herself (weekly, not every night) ----
+  let growthResult: unknown = null;
+  const growthLast = db.prepare("SELECT value FROM meta WHERE key = 'growth_last'").get() as { value: string } | undefined;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const lastGrowth = growthLast?.value ?? '';
+  // Run growth if never run or last run was ≥7 days ago
+  if (!lastGrowth || (Date.parse(todayStr) - Date.parse(lastGrowth)) >= 7 * 86400000) {
+    try {
+      growthResult = await runGrowthPass(cfg, providers);
+      db.prepare("INSERT INTO meta (key, value) VALUES ('growth_last', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(todayStr);
+    } catch (err) {
+      console.error('[nightly] growth pass failed:', err);
+    }
+  }
+
   const bak = backup();
-  const summary = { episodes, merged, decayed, embedded, dream: dreamResult, backup: bak.file, backupOk: bak.ok };
+  const summary = { episodes, merged, decayed, embedded, dream: dreamResult, growth: growthResult, backup: bak.file, backupOk: bak.ok };
   receipt('nightly', summary);
   db.prepare("INSERT INTO meta (key, value) VALUES ('nightly_last', date('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
   return summary;

@@ -377,6 +377,30 @@ export class Hephd {
         return { date: file, text: readFileSync(path, 'utf8') };
       }
 
+      case 'soul.revisions': {
+        const { readdirSync, readFileSync, existsSync } = await import('node:fs');
+        const dir = join(paths.home, 'persona');
+        if (!existsSync(dir)) return [];
+        const backs = readdirSync(dir)
+          .filter(f => f.endsWith('.md.bak'))
+          .sort()
+          .reverse()
+          .slice(0, 10)
+          .map(f => {
+            const text = readFileSync(join(dir, f), 'utf8');
+            const date = f.match(/-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2})/)?.[1]?.replace(/-/g, ':') ?? '';
+            return { date, file: f, preview: text.slice(0, 200) };
+          });
+        return backs;
+      }
+
+      case 'soul.current': {
+        const { readFileSync, existsSync } = await import('node:fs');
+        const file = join(paths.home, 'persona', 'soul.md');
+        if (!existsSync(file)) throw new Error('no soul.md');
+        return { text: readFileSync(file, 'utf8') };
+      }
+
       case 'mcp.status':
         return { servers: mcpStatus(), web: webAvailable() };
 
