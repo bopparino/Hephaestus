@@ -11,6 +11,7 @@ import { loadSkins } from './skins.js';
 import { initEmbeddings, embed } from './embeddings.js';
 import { addFact, coreFacts, forgetFact, recallEpisodes, recallFacts, renderCore, renderRecall, searchFacts, listFacts, getFact, updateFact, restoreFact, setCore } from './memory.js';
 import { renderPersona, renderSelfState, renderIntentions, renderOpinions, renderQuirks, ensureDefaultPersona } from './soul.js';
+import { heartbeat } from './heartbeat.js';
 import { bumpCaptureCounter, isTrivial, runCapture } from './capture.js';
 import { foldBacklog, foldPending } from './folding.js';
 import { nightlyDue, runNightly } from './nightly.js';
@@ -403,6 +404,13 @@ export class Hephd {
 
       case 'mcp.status':
         return { servers: mcpStatus(), web: webAvailable() };
+
+      case 'heartbeat.trigger': {
+        // Manual companion heartbeat test — forces model call bypassing quiet hours
+        const { heartbeat } = await import('./heartbeat.js');
+        const decision = await heartbeat(this.cfg, this.providers, null, true);
+        return { decision };
+      }
 
       case 'capabilities.get': {
         // The honest inventory — live-derived, never aspirational. This is
@@ -845,12 +853,33 @@ export class Hephd {
   // ---- the heartbeat -----------------------------------------------------
 
   private async tickJobs(): Promise<void> {
+    // Scheduled jobs first
     for (const job of claimDue()) {
       try {
         await this.runJob(job);
       } catch (err) {
         recordRun(job.name, { silent: false, delivered: false, error: String(err) });
       }
+    }
+    // Companion heartbeat: decide whether to reach out
+    try {
+      const decision = await heartbeat(this.cfg, this.providers);
+      if (decision?.reachOut && decision.message) {
+        // Deliver via the owner's channel if configured
+        const delivered = await deliverToOwner(decision.message);
+        // Persist only after delivery confirms (delivery-first rule)
+        if (delivered) {
+          const sessionId = createSession('chat');
+          saveMessage(sessionId, 'assistant', decision.message);
+          // Mark intention fulfilled if applicable
+          if (decision.actsOnIntentionId) {
+            const { fulfillIntention } = await import('./soul.js');
+            fulfillIntention(decision.actsOnIntentionId);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[heartbeat] error:', err);
     }
   }
 
